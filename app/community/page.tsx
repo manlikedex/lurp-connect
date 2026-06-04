@@ -15,21 +15,25 @@ import { PageHeader } from "@/components/ui/page-header";
 import { supabase } from "@/lib/supabase";
 import { awardXp } from "@/lib/xp";
 
+type ProfileSummary = {
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
 type Post = {
   id: string;
+  author_id: string;
   title: string;
   content: string | null;
   category: string | null;
   image_url: string | null;
-  author_id: string;
   created_at: string;
-  profiles:
-    | {
-        username: string;
-        display_name: string | null;
-        avatar_url: string | null;
-      }
-    | null;
+  profiles: ProfileSummary | null;
+};
+
+type RawPost = Omit<Post, "profiles"> & {
+  profiles: ProfileSummary | ProfileSummary[] | null;
 };
 
 type Like = {
@@ -57,6 +61,7 @@ export default function CommunityPage() {
       .select(
         `
         id,
+        author_id,
         title,
         content,
         category,
@@ -78,7 +83,13 @@ export default function CommunityPage() {
       return;
     }
 
-    const loadedPosts = (postData as Post[]) || [];
+    const loadedPosts: Post[] = ((postData || []) as RawPost[]).map((post) => ({
+      ...post,
+      profiles: Array.isArray(post.profiles)
+        ? post.profiles[0] || null
+        : post.profiles,
+    }));
+
     setPosts(loadedPosts);
 
     const postIds = loadedPosts.map((post) => post.id);
@@ -142,6 +153,10 @@ export default function CommunityPage() {
 
         setMyLikes(likedMap);
       }
+    } else {
+      setLikes({});
+      setComments({});
+      setMyLikes({});
     }
 
     setLoading(false);
@@ -179,20 +194,6 @@ export default function CommunityPage() {
         return;
       }
 
-      const likedPost = posts.find(
-  (post) => post.id === postId
-);
-
-if (
-  likedPost &&
-  likedPost.author_id !== user.id
-) {
-  await awardXp(
-    likedPost.author_id,
-    "like_received"
-  );
-}
-
       setMyLikes((current) => ({
         ...current,
         [postId]: false,
@@ -215,6 +216,12 @@ if (
       console.error("Like error:", error);
       alert(error.message);
       return;
+    }
+
+    const likedPost = posts.find((post) => post.id === postId);
+
+    if (likedPost && likedPost.author_id !== user.id) {
+      await awardXp(likedPost.author_id, "like_received");
     }
 
     setMyLikes((current) => ({

@@ -68,7 +68,15 @@ export function OnlineMembers() {
       return;
     }
 
-    setMembers((data as OnlineMember[]) || []);
+    const formattedMembers =
+  data?.map((member) => ({
+    ...member,
+    profiles: Array.isArray(member.profiles)
+      ? member.profiles[0] || null
+      : member.profiles,
+  })) || [];
+
+setMembers(formattedMembers as OnlineMember[]);
   }
 
   return (
