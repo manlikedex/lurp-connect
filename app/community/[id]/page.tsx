@@ -78,7 +78,16 @@ export default function PostPage({
       console.error("Post load error:", error);
     }
 
-    setPost(data as Post | null);
+    const formattedPost = data
+  ? {
+      ...data,
+      profiles: Array.isArray(data.profiles)
+        ? data.profiles[0] || null
+        : data.profiles,
+    }
+  : null;
+
+setPost(formattedPost as Post | null);
     setLoading(false);
   }
 
@@ -104,7 +113,15 @@ export default function PostPage({
       console.error("Comment load error:", error);
     }
 
-    setComments((data as Comment[]) || []);
+    const formattedComments =
+  data?.map((comment) => ({
+    ...comment,
+    profiles: Array.isArray(comment.profiles)
+      ? comment.profiles[0] || null
+      : comment.profiles,
+  })) || [];
+
+setComments(formattedComments as Comment[]);
   }
 
   async function submitComment() {
