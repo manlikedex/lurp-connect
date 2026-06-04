@@ -63,7 +63,15 @@ export default function BusinessesPage() {
         console.error("Business load error:", error);
       }
 
-      setBusinesses((data as Business[]) || []);
+      const formattedBusinesses =
+  data?.map((business) => ({
+    ...business,
+    profiles: Array.isArray(business.profiles)
+      ? business.profiles[0] || null
+      : business.profiles,
+  })) || [];
+
+setBusinesses(formattedBusinesses as Business[]);
       setLoading(false);
     }
 
