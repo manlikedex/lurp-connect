@@ -1,0 +1,1 @@
+rounded-[2rem] border border-white/10 bg-[#111118]
