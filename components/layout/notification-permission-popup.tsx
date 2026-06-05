@@ -6,6 +6,16 @@ import { supabase } from "@/lib/supabase";
 
 const STORAGE_KEY = "lurp_notification_prompt_seen";
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+
+  const rawData = window.atob(base64);
+
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
 export function NotificationPermissionPopup() {
   const [open, setOpen] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission | null>(
@@ -17,6 +27,7 @@ export function NotificationPermissionPopup() {
     if (!("Notification" in window)) return;
 
     const alreadySeen = localStorage.getItem(STORAGE_KEY);
+
     setPermission(Notification.permission);
 
     if (!alreadySeen && Notification.permission === "default") {
@@ -25,75 +36,79 @@ export function NotificationPermissionPopup() {
     }
   }, []);
 
-async function enableNotifications() {
-  if (!("serviceWorker" in navigator)) return;
+  async function enableNotifications() {
+    if (!("Notification" in window)) {
+      alert("Your browser does not support notifications.");
+      return;
+    }
 
-  const permission =
-    await Notification.requestPermission();
+    if (!("serviceWorker" in navigator)) {
+      alert("Your browser does not support service workers.");
+      return;
+    }
 
-  if (permission !== "granted") return;
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
-  const registration =
-    await navigator.serviceWorker.register("/sw.js");
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return;
-
-  function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-
-  const base64 = (base64String + padding)
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-
-  const rawData = window.atob(base64);
-
-  return Uint8Array.from(
-    [...rawData].map((char) => char.charCodeAt(0))
-  );
-}
-
-  const subscription =
-    await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-),
-    });
-
-  await fetch("/api/push/subscribe", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      profileId: user.id,
-      endpoint: subscription.endpoint,
-      subscription,
-    }),
-  });
-
-  localStorage.setItem(
-    "lurp_notification_prompt_seen",
-    "true"
-  );
-
-  setOpen(false);
-}
+    if (!publicKey) {
+      alert("Notification public key is missing.");
+      return;
+    }
 
     const result = await Notification.requestPermission();
+
     setPermission(result);
+
+    if (result !== "granted") {
+      localStorage.setItem(STORAGE_KEY, "true");
+      setOpen(false);
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.register("/sw.js");
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("Login with Discord first to enable notifications.");
+      return;
+    }
+
+    const existingSubscription =
+      await registration.pushManager.getSubscription();
+
+    const subscription =
+      existingSubscription ||
+      (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      }));
+
+    const response = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        profileId: user.id,
+        endpoint: subscription.endpoint,
+        subscription,
+      }),
+    });
+
+    if (!response.ok) {
+      alert("Failed to save notification subscription.");
+      return;
+    }
+
     localStorage.setItem(STORAGE_KEY, "true");
     setOpen(false);
 
-    if (result === "granted") {
-      new Notification("LURP Connect Notifications Enabled", {
-        body: "You will now receive browser notification alerts when supported.",
-      });
-    }
+    new Notification("LURP Connect Notifications Enabled", {
+      body: "You will now receive LURP Connect notification alerts.",
+      icon: "/logo.png",
+    });
   }
 
   function closePopup() {
