@@ -13,14 +13,12 @@ export async function POST(req: Request) {
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const { endpoint } = await req.json();
 
-  const { profileId, endpoint, subscription } = await req.json();
-
-  const { error } = await supabase.from("push_subscriptions").upsert({
-    profile_id: profileId,
-    endpoint,
-    subscription,
-  });
+  const { error } = await supabase
+    .from("push_subscriptions")
+    .delete()
+    .eq("endpoint", endpoint);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

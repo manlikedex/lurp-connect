@@ -13,6 +13,8 @@ import {
   Users,
 } from "lucide-react";
 
+import { Settings } from "lucide-react";
+
 export const navItems = [
   { label: "Home", href: "/", icon: Home },
   { label: "Community", href: "/community", icon: MessageCircle },
@@ -23,6 +25,8 @@ export const navItems = [
   { label: "Achievements", href: "/achievements", icon: Trophy },
   { label: "Rewards", href: "/rewards", icon: Gift },
   { label: "Profile", href: "/profile", icon: User },
+  { label: "Settings", href: "/settings", icon: Settings },
+
  
 ];
 

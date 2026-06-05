@@ -287,31 +287,31 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </section>
 
-        <nav className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-full border border-white/10 bg-[#111018]/90 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl lg:hidden">
-          <div className="grid grid-cols-5 gap-1">
-            {navItems.slice(0, 5).map((item) => {
-              const isActive =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
+        <nav className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-1rem)] max-w-[520px] -translate-x-1/2 overflow-hidden rounded-full border border-white/10 bg-[#111018]/90 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl lg:hidden">
+  <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+    {navItems.map((item) => {
+      const isActive =
+        item.href === "/"
+          ? pathname === "/"
+          : pathname.startsWith(item.href);
 
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex flex-col items-center gap-1 rounded-full py-2 text-[11px] font-bold transition ${
-                    isActive
-                      ? "bg-white text-[#111018]"
-                      : "text-white/45 hover:bg-white/[0.06] hover:text-white"
-                  }`}
-                >
-                  <item.icon size={16} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
+      return (
+        <Link
+          key={item.label}
+          href={item.href}
+          className={`flex min-w-[78px] flex-col items-center gap-1 rounded-full px-3 py-2 text-[11px] font-bold transition ${
+            isActive
+              ? "bg-white text-[#111018]"
+              : "text-white/45 hover:bg-white/[0.06] hover:text-white"
+          }`}
+        >
+          <item.icon size={16} />
+          {item.label}
+        </Link>
+      );
+    })}
+  </div>
+</nav>
       </div>
       <LatestUpdatesPopup />
       <NotificationPermissionPopup />
