@@ -6,9 +6,11 @@ import { ArrowLeft, Heart, MessageSquare, Send, UserRound } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { supabase } from "@/lib/supabase";
 import { awardXp } from "@/lib/xp";
+import { createNotification } from "@/lib/notifications";
 
 type Post = {
   id: string;
+  author_id: string;
   title: string;
   content: string | null;
   image_url: string | null;
@@ -56,21 +58,22 @@ export default function PostPage({
   async function loadPost() {
     const { data, error } = await supabase
       .from("posts")
-      .select(
-        `
-        id,
-        title,
-        content,
-        image_url,
-        category,
-        created_at,
-        profiles:author_id (
-          username,
-          display_name,
-          avatar_url
-        )
-      `
-      )
+.select(
+  `
+  id,
+  author_id,
+  title,
+  content,
+  image_url,
+  category,
+  created_at,
+  profiles:author_id (
+    username,
+    display_name,
+    avatar_url
+  )
+`
+)
       .eq("id", id)
       .maybeSingle();
 
@@ -149,6 +152,13 @@ setComments(formattedComments as Comment[]);
     }
 
     await awardXp(user.id, "comment");
+    if (post && post.author_id !== user.id) {
+  await createNotification({
+    profileId: post.author_id,
+    title: "New comment",
+    message: "Someone commented on your post.",
+  });
+}
 
     setComment("");
     loadComments();

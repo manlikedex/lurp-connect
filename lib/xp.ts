@@ -117,6 +117,13 @@ export async function awardXp(profileId: string, action: XpAction) {
     })
     .eq("id", profileId);
 
+    await supabase.from("notifications").insert({
+  profile_id: profileId,
+  title: "XP earned",
+  message: `You earned ${xpAmount} XP for ${action.replaceAll("_", " ")}.`,
+  read: false,
+});
+
   if (newLevel > oldLevel) {
     await supabase.from("notifications").insert({
       profile_id: profileId,

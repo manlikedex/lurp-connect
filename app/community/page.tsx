@@ -14,6 +14,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
 import { supabase } from "@/lib/supabase";
 import { awardXp } from "@/lib/xp";
+import { createNotification } from "@/lib/notifications";
 
 type ProfileSummary = {
   username: string;
@@ -223,6 +224,14 @@ export default function CommunityPage() {
     if (likedPost && likedPost.author_id !== user.id) {
       await awardXp(likedPost.author_id, "like_received");
     }
+
+    if (likedPost && likedPost.author_id !== user.id) {
+  await createNotification({
+    profileId: likedPost.author_id,
+    title: "Post liked",
+    message: "Someone liked your community post.",
+  });
+}
 
     setMyLikes((current) => ({
       ...current,

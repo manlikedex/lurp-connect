@@ -1,23 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Circle, UserRound } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { createNotification } from "@/lib/notifications";
+
+type ProfileSummary = {
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
 
 type OnlineMember = {
   profile_id: string;
   last_seen: string;
-  profiles:
-    | {
-        username: string;
-        display_name: string | null;
-        avatar_url: string | null;
-      }
-    | null;
+  profiles: ProfileSummary | null;
+};
+
+type RawOnlineMember = Omit<OnlineMember, "profiles"> & {
+  profiles: ProfileSummary | ProfileSummary[] | null;
 };
 
 export function OnlineMembers() {
   const [members, setMembers] = useState<OnlineMember[]>([]);
+  const presenceCheckedRef = useRef(false);
 
   useEffect(() => {
     refreshPresence();
@@ -38,10 +44,30 @@ export function OnlineMembers() {
 
     if (!user) return;
 
+    const { data: existing } = await supabase
+      .from("online_members")
+      .select("last_seen")
+      .eq("profile_id", user.id)
+      .maybeSingle();
+
+    const wasOffline =
+      !existing ||
+      new Date(existing.last_seen).getTime() < Date.now() - 5 * 60 * 1000;
+
     await supabase.from("online_members").upsert({
       profile_id: user.id,
       last_seen: new Date().toISOString(),
     });
+
+    if (wasOffline && !presenceCheckedRef.current) {
+      presenceCheckedRef.current = true;
+
+      await createNotification({
+        profileId: user.id,
+        title: "You are online",
+        message: "Your LURP Connect status is now active.",
+      });
+    }
   }
 
   async function loadOnlineMembers() {
@@ -68,15 +94,15 @@ export function OnlineMembers() {
       return;
     }
 
-    const formattedMembers =
-  data?.map((member) => ({
-    ...member,
-    profiles: Array.isArray(member.profiles)
-      ? member.profiles[0] || null
-      : member.profiles,
-  })) || [];
+    const formattedMembers: OnlineMember[] = ((data || []) as RawOnlineMember[])
+      .map((member) => ({
+        ...member,
+        profiles: Array.isArray(member.profiles)
+          ? member.profiles[0] || null
+          : member.profiles,
+      }));
 
-setMembers(formattedMembers as OnlineMember[]);
+    setMembers(formattedMembers);
   }
 
   return (
