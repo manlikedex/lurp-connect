@@ -10,6 +10,7 @@ import { navItems } from "@/data/app-data";
 import { supabase } from "@/lib/supabase";
 import { DevelopmentBanner } from "./development-banner";
 import { LatestUpdatesPopup } from "./latest-updates-popup";
+import { ServerReleaseBanner } from "./server-release-banner";
 
 type Notification = {
   id: string;
@@ -279,7 +280,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </header>
 
-          <DevelopmentBanner />
+          <ServerReleaseBanner />
+<DevelopmentBanner />
 
           {children}
         </section>

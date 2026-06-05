@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { BadgeCheck, Bell, Gift, Sparkles, Trophy, X } from "lucide-react";
 
-const APP_UPDATE_VERSION = "2025-01-01-xp-rewards";
+const APP_UPDATE_VERSION = "2025-01-01-notifications-and-banner";
 
 const updates = [
   {
