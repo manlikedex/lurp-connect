@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { BadgeCheck, Bell, Gift, Sparkles, Trophy, X } from "lucide-react";
 
-const APP_UPDATE_VERSION = "2025-01-01-notifications-and-api";
+const APP_UPDATE_VERSION = "2025-01-01-notifications-and-api2";
 
 const updates = [
   {
@@ -58,12 +58,11 @@ export function LatestUpdatesPopup() {
           </p>
 
           <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] sm:text-3xl">
-            Progression is live.
+            API & Notification Fix.
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-white/55">
-            XP, achievements, reward codes and notifications are now available
-            on LURP Connect.
+            Notifications and API responses should now be working and feel a lot smoother and more user friendly.
           </p>
 
           <div className="mt-5 grid gap-2">
