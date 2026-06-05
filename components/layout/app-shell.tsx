@@ -9,6 +9,7 @@ import { Bell, Menu, User } from "lucide-react";
 import { navItems } from "@/data/app-data";
 import { supabase } from "@/lib/supabase";
 import { DevelopmentBanner } from "./development-banner";
+import { LatestUpdatesPopup } from "./latest-updates-popup";
 
 type Notification = {
   id: string;
@@ -309,6 +310,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </nav>
       </div>
+      <LatestUpdatesPopup />
     </main>
   );
 }
