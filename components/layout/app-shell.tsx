@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 import { DevelopmentBanner } from "./development-banner";
 import { LatestUpdatesPopup } from "./latest-updates-popup";
 import { ServerReleaseBanner } from "./server-release-banner";
+import { NotificationPermissionPopup } from "./notification-permission-popup";
 
 type Notification = {
   id: string;
@@ -313,6 +314,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </div>
       <LatestUpdatesPopup />
+      <NotificationPermissionPopup />
     </main>
   );
 }
