@@ -3,28 +3,18 @@
 import { useEffect, useState } from "react";
 import { BadgeCheck, Bell, Gift, Sparkles, Trophy, X } from "lucide-react";
 
-const APP_UPDATE_VERSION = "2025-01-01-notifications-and-banner";
+const APP_UPDATE_VERSION = "2025-01-01-notifications-and-api";
 
 const updates = [
   {
-    title: "XP progression",
-    description: "Earn XP from posts, comments, uploads, characters and likes.",
-    icon: Trophy,
-  },
-  {
-    title: "Reward codes",
-    description: "Unlock staff-checkable codes for in-game rewards.",
-    icon: Gift,
-  },
-  {
-    title: "Achievements",
-    description: "Earn badges for milestones across LURP Connect.",
+    title: "Notification FIX",
+    description: "Fixed issue with popup notification promp.",
     icon: BadgeCheck,
   },
   {
-    title: "Notifications",
-    description: "Level ups and rewards now appear in the bell.",
-    icon: Bell,
+    title: "API",
+    description: "Fixed issue with API not responding with database checks.",
+    icon: BadgeCheck,
   },
 ];
 
