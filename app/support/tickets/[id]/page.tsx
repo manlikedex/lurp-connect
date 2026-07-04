@@ -48,11 +48,73 @@ export default function UserTicketPage({
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [someoneTyping, setSomeoneTyping] = useState(false);
+  const [typingChannel, setTypingChannel] = useState<ReturnType<
+    typeof supabase.channel
+  > | null>(null);
+
+  useEffect(() => {
+    async function getCurrentUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUserId(user?.id || null);
+    }
+
+    getCurrentUser();
+  }, []);
 
   useEffect(() => {
     loadTicket();
     loadMessages();
-  }, [id]);
+
+    const channel = supabase
+      .channel(`ticket-room-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_tickets",
+          filter: `id=eq.${id}`,
+        },
+        () => {
+          loadTicket();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_messages",
+          filter: `ticket_id=eq.${id}`,
+        },
+        () => {
+          loadMessages();
+        }
+      )
+      .on("broadcast", { event: "typing" }, (payload) => {
+        const typingProfileId = payload.payload?.profileId;
+
+        if (typingProfileId && typingProfileId !== currentUserId) {
+          setSomeoneTyping(true);
+
+          setTimeout(() => {
+            setSomeoneTyping(false);
+          }, 2500);
+        }
+      })
+      .subscribe();
+
+    setTypingChannel(channel);
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, currentUserId]);
 
   function singleProfile(profile: ProfileSummary | ProfileSummary[] | null) {
     return Array.isArray(profile) ? profile[0] || null : profile;
@@ -103,6 +165,19 @@ export default function UserTicketPage({
     setMessages((data as Message[]) || []);
   }
 
+  async function broadcastTyping() {
+    if (!currentUserId || !typingChannel) return;
+
+    await typingChannel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: {
+        profileId: currentUserId,
+        ticketId: id,
+      },
+    });
+  }
+
   async function sendReply() {
     if (!ticket || !reply.trim()) return;
 
@@ -140,8 +215,6 @@ export default function UserTicketPage({
       .eq("id", ticket.id);
 
     setReply("");
-    await loadMessages();
-    await loadTicket();
     setSending(false);
   }
 
@@ -279,11 +352,25 @@ export default function UserTicketPage({
               })}
             </div>
 
+            {someoneTyping && (
+              <div className="mt-4 flex items-center gap-2 text-sm font-bold text-white/45">
+                <span>Someone is typing</span>
+                <span className="flex gap-1">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-purple-300 [animation-delay:-0.2s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-purple-300 [animation-delay:-0.1s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-purple-300" />
+                </span>
+              </div>
+            )}
+
             {!ticket.archived && ticket.status !== "closed" && (
               <div className="mt-6 flex gap-3">
                 <textarea
                   value={reply}
-                  onChange={(event) => setReply(event.target.value)}
+                  onChange={(event) => {
+                    setReply(event.target.value);
+                    broadcastTyping();
+                  }}
                   rows={4}
                   placeholder="Continue the conversation..."
                   className="flex-1 resize-none rounded-[1.4rem] border border-white/10 bg-white/[0.035] p-4 text-sm text-white outline-none placeholder:text-white/25"
@@ -316,13 +403,6 @@ export default function UserTicketPage({
               <p>Type: {ticket.type.replaceAll("_", " ")}</p>
               <p>Status: {ticket.archived ? "Archived" : ticket.status}</p>
             </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-emerald-300/20 bg-emerald-400/10 p-5">
-            <h3 className="font-black text-emerald-200">Support Ticket</h3>
-            <p className="mt-2 text-sm leading-6 text-emerald-100/70">
-              Staff replies and updates will appear in this conversation.
-            </p>
           </div>
         </aside>
       </section>

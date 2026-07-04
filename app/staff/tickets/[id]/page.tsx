@@ -61,11 +61,73 @@ export default function StaffTicketPage({
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [someoneTyping, setSomeoneTyping] = useState(false);
+  const [typingChannel, setTypingChannel] = useState<ReturnType<
+    typeof supabase.channel
+  > | null>(null);
+
+  useEffect(() => {
+    async function getCurrentUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setCurrentUserId(user?.id || null);
+    }
+
+    getCurrentUser();
+  }, []);
 
   useEffect(() => {
     loadTicket();
     loadMessages();
-  }, [id]);
+
+    const channel = supabase
+      .channel(`ticket-room-${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_tickets",
+          filter: `id=eq.${id}`,
+        },
+        () => {
+          loadTicket();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_messages",
+          filter: `ticket_id=eq.${id}`,
+        },
+        () => {
+          loadMessages();
+        }
+      )
+      .on("broadcast", { event: "typing" }, (payload) => {
+        const typingProfileId = payload.payload?.profileId;
+
+        if (typingProfileId && typingProfileId !== currentUserId) {
+          setSomeoneTyping(true);
+
+          setTimeout(() => {
+            setSomeoneTyping(false);
+          }, 2500);
+        }
+      })
+      .subscribe();
+
+    setTypingChannel(channel);
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, currentUserId]);
 
   function singleProfile(profile: ProfileSummary | ProfileSummary[] | null) {
     return Array.isArray(profile) ? profile[0] || null : profile;
@@ -133,6 +195,19 @@ export default function StaffTicketPage({
     setMessages((data as Message[]) || []);
   }
 
+  async function broadcastTyping() {
+    if (!currentUserId || !typingChannel) return;
+
+    await typingChannel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: {
+        profileId: currentUserId,
+        ticketId: id,
+      },
+    });
+  }
+
   async function updateStatus(status: string) {
     if (!ticket) return;
 
@@ -158,7 +233,6 @@ export default function StaffTicketPage({
       message: `Your ticket ${ticket.reference_number || ticket.id.slice(0, 8)} is now ${status.replaceAll("_", " ")}.`,
     });
 
-    setTicket({ ...ticket, status });
     setSaving(false);
   }
 
@@ -200,12 +274,6 @@ export default function StaffTicketPage({
       message: `Your ticket ${ticket.reference_number || ticket.id.slice(0, 8)} has been archived by staff.`,
     });
 
-    setTicket({
-      ...ticket,
-      archived: true,
-      status: "closed",
-    });
-
     setSaving(false);
   }
 
@@ -244,7 +312,6 @@ export default function StaffTicketPage({
     });
 
     setReply("");
-    await loadMessages();
     setSaving(false);
   }
 
@@ -271,9 +338,6 @@ export default function StaffTicketPage({
 
         <section className="rounded-[2rem] border border-white/10 bg-[#111118] p-8">
           <h1 className="text-3xl font-black">Ticket not found.</h1>
-          <p className="mt-2 text-white/50">
-            This ticket may not exist or you may not have staff access.
-          </p>
         </section>
       </AppShell>
     );
@@ -294,32 +358,22 @@ export default function StaffTicketPage({
       <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <div className="space-y-5">
           <article className="rounded-[2rem] border border-white/10 bg-[#111118] p-6">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-200/70">
-                  {ticket.type.replaceAll("_", " ")} · {ticket.category}
-                </p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-200/70">
+              {ticket.type.replaceAll("_", " ")} · {ticket.category}
+            </p>
 
-                <h1 className="mt-2 text-3xl font-black">{ticket.title}</h1>
+            <h1 className="mt-2 text-3xl font-black">{ticket.title}</h1>
 
-                <p className="mt-2 text-sm font-black text-purple-200">
-                  Ref: {ticket.reference_number || ticket.id.slice(0, 8)}
-                </p>
+            <p className="mt-2 text-sm font-black text-purple-200">
+              Ref: {ticket.reference_number || ticket.id.slice(0, 8)}
+            </p>
 
-                <p className="mt-2 flex items-center gap-2 text-sm text-white/40">
-                  <Clock size={15} />
-                  {new Date(ticket.created_at).toLocaleString()}
-                </p>
-              </div>
+            <p className="mt-2 flex items-center gap-2 text-sm text-white/40">
+              <Clock size={15} />
+              {new Date(ticket.created_at).toLocaleString()}
+            </p>
 
-              <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black capitalize text-emerald-300">
-                {ticket.archived
-                  ? "Archived"
-                  : ticket.status?.replaceAll("_", " ")}
-              </span>
-            </div>
-
-            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-5">
+            <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-5">
               <p className="whitespace-pre-wrap text-sm leading-7 text-white/65">
                 {ticket.description}
               </p>
@@ -328,12 +382,6 @@ export default function StaffTicketPage({
 
           <section className="rounded-[2rem] border border-white/10 bg-[#111118] p-6">
             <h2 className="mb-5 text-2xl font-black">Ticket Conversation</h2>
-
-            {messages.length === 0 && (
-              <p className="text-sm text-white/45">
-                No replies yet. Send the first staff response below.
-              </p>
-            )}
 
             <div className="space-y-4">
               {messages.map((message) => {
@@ -381,11 +429,25 @@ export default function StaffTicketPage({
               })}
             </div>
 
+            {someoneTyping && (
+              <div className="mt-4 flex items-center gap-2 text-sm font-bold text-white/45">
+                <span>Someone is typing</span>
+                <span className="flex gap-1">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-purple-300 [animation-delay:-0.2s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-purple-300 [animation-delay:-0.1s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-purple-300" />
+                </span>
+              </div>
+            )}
+
             {!ticket.archived && (
               <div className="mt-6 flex gap-3">
                 <textarea
                   value={reply}
-                  onChange={(event) => setReply(event.target.value)}
+                  onChange={(event) => {
+                    setReply(event.target.value);
+                    broadcastTyping();
+                  }}
                   rows={4}
                   placeholder="Write a staff reply..."
                   className="flex-1 resize-none rounded-[1.4rem] border border-white/10 bg-white/[0.035] p-4 text-sm text-white outline-none placeholder:text-white/25"
@@ -454,6 +516,7 @@ export default function StaffTicketPage({
               <p>Priority: {ticket.priority}</p>
               <p>Category: {ticket.category}</p>
               <p>Type: {ticket.type.replaceAll("_", " ")}</p>
+              <p>Status: {ticket.archived ? "Archived" : ticket.status}</p>
             </div>
           </div>
 
@@ -463,8 +526,8 @@ export default function StaffTicketPage({
               Staff Review Mode
             </h3>
             <p className="mt-2 text-sm leading-6 text-emerald-100/70">
-              Updating, replying or archiving this ticket will notify the
-              player through LURP Connect.
+              Replies, status changes and archive actions update live for
+              everyone viewing this ticket.
             </p>
           </div>
         </aside>
