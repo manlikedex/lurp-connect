@@ -30,6 +30,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const glowOne = useTransform(scrollY, [0, 700], [0, 120]);
   const glowTwo = useTransform(scrollY, [0, 700], [0, -90]);
 
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -38,19 +40,48 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? [...navItems, { label: "Staff", href: "/staff", icon: ShieldCheck }]
     : navItems;
 
+  const unreadCount = notifications.filter((item) => !item.read).length;
+
+  useEffect(() => {
+    async function checkAuth() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setIsLoggedIn(Boolean(user));
+      setAuthChecked(true);
+    }
+
+    checkAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(Boolean(session?.user));
+      setAuthChecked(true);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   useEffect(() => {
     async function checkStaff() {
+      if (!isLoggedIn) {
+        setIsStaff(false);
+        return;
+      }
+
       const result = await isCurrentUserStaff();
       setIsStaff(result);
     }
 
     checkStaff();
-  }, []);
-
-  const unreadCount = notifications.filter((item) => !item.read).length;
+  }, [isLoggedIn]);
 
   useEffect(() => {
     async function loadNotifications() {
+      if (!isLoggedIn) return;
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -73,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
 
     loadNotifications();
-  }, []);
+  }, [isLoggedIn]);
 
   async function markAllAsRead() {
     const unreadIds = notifications
@@ -107,6 +138,50 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (nextState) {
       await markAllAsRead();
     }
+  }
+
+  if (!authChecked) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#08080d] text-white">
+        <div className="rounded-[2rem] border border-white/10 bg-[#111118] p-8 text-center">
+          <p className="text-white/55">Checking login...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#08080d] px-4 text-white">
+        <section className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#111118] p-8 text-center shadow-2xl shadow-black/40">
+          <div className="mx-auto mb-5 h-20 w-20 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]">
+            <Image
+              src="/logo.png"
+              alt="LURP Connect"
+              width={80}
+              height={80}
+              className="h-full w-full object-cover"
+              priority
+            />
+          </div>
+
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-purple-200">
+            LURP Connect
+          </p>
+
+          <h1 className="mt-3 text-3xl font-black">Sign in required</h1>
+
+          <p className="mt-3 text-sm leading-6 text-white/55">
+            Please sign in with Discord to access the LURP Connect community
+            platform.
+          </p>
+
+          <div className="mt-6">
+            <DiscordLogin />
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
