@@ -138,9 +138,45 @@ export function AppShell({ children }: { children: ReactNode }) {
     subscribeNotifications();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    async function refreshPresence() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      await supabase.from("online_members").upsert({
+        profile_id: user.id,
+        last_seen: new Date().toISOString(),
+      });
+    }
+
+    refreshPresence();
+
+    const heartbeat = setInterval(() => {
+      refreshPresence();
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshPresence();
       }
+    };
+
+    window.addEventListener("focus", refreshPresence);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(heartbeat);
+      window.removeEventListener("focus", refreshPresence);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isLoggedIn]);
 

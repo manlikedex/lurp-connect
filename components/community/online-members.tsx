@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Circle, UserRound } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { createNotification } from "@/lib/notifications";
 
 type ProfileSummary = {
   username: string;
@@ -23,17 +22,11 @@ type RawOnlineMember = Omit<OnlineMember, "profiles"> & {
 
 export function OnlineMembers() {
   const [members, setMembers] = useState<OnlineMember[]>([]);
-  const presenceCheckedRef = useRef(false);
 
   useEffect(() => {
-    refreshPresence();
     loadOnlineMembers();
 
-    const heartbeat = setInterval(() => {
-      refreshPresence();
-    }, 30000);
-
-    const cleanup = setInterval(() => {
+    const refreshTimer = setInterval(() => {
       loadOnlineMembers();
     }, 15000);
 
@@ -53,44 +46,10 @@ export function OnlineMembers() {
       .subscribe();
 
     return () => {
-      clearInterval(heartbeat);
-      clearInterval(cleanup);
+      clearInterval(refreshTimer);
       supabase.removeChannel(channel);
     };
   }, []);
-
-  async function refreshPresence() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const { data: existing } = await supabase
-      .from("online_members")
-      .select("last_seen")
-      .eq("profile_id", user.id)
-      .maybeSingle();
-
-    const wasOffline =
-      !existing ||
-      new Date(existing.last_seen).getTime() < Date.now() - 5 * 60 * 1000;
-
-    await supabase.from("online_members").upsert({
-      profile_id: user.id,
-      last_seen: new Date().toISOString(),
-    });
-
-    if (wasOffline && !presenceCheckedRef.current) {
-      presenceCheckedRef.current = true;
-
-      await createNotification({
-        profileId: user.id,
-        title: "You are online",
-        message: "Your LURP Connect status is now active.",
-      });
-    }
-  }
 
   async function loadOnlineMembers() {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
