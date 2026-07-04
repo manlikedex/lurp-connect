@@ -626,4 +626,4 @@ export default function RulesPage() {
       </section>
     </AppShell>
   );
-}
+}           

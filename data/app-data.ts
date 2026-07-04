@@ -13,12 +13,15 @@ import {
   Trophy,
   User,
   Users,
+  LifeBuoy,
 } from "lucide-react";
+
 
 export const navItems = [
   { label: "Home", href: "/", icon: Home },
   { label: "Rules", href: "/rules", icon: ShieldCheck },
   { label: "Community", href: "/community", icon: MessageCircle },
+  { label: "Support", href: "/support", icon: LifeBuoy },
   { label: "Events", href: "/events", icon: CalendarDays },
   { label: "Gallery", href: "/gallery", icon: Camera },
   { label: "Businesses", href: "/businesses", icon: Store },

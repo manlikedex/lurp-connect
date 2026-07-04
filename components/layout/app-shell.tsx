@@ -5,9 +5,10 @@ import Link from "next/link";
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useScroll, useTransform } from "motion/react";
-import { Bell, Menu, User } from "lucide-react";
+import { Bell, Menu, ShieldCheck, User } from "lucide-react";
 import { navItems } from "@/data/app-data";
 import { supabase } from "@/lib/supabase";
+import { isCurrentUserStaff } from "@/lib/staff";
 import { DevelopmentBanner } from "./development-banner";
 import { LatestUpdatesPopup } from "./latest-updates-popup";
 import { ServerReleaseBanner } from "./server-release-banner";
@@ -31,6 +32,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
+
+  const visibleNavItems = isStaff
+    ? [...navItems, { label: "Staff", href: "/staff", icon: ShieldCheck }]
+    : navItems;
+
+  useEffect(() => {
+    async function checkStaff() {
+      const result = await isCurrentUserStaff();
+      setIsStaff(result);
+    }
+
+    checkStaff();
+  }, []);
 
   const unreadCount = notifications.filter((item) => !item.read).length;
 
@@ -130,7 +145,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <nav className="space-y-1.5">
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
@@ -211,17 +226,23 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
               </div>
 
-<div className="relative flex items-center gap-2">
-  <div className="hidden sm:block">
-    <DiscordLogin />
-  </div>
+              <div className="relative flex items-center gap-2">
+                <div className="hidden sm:block">
+                  <DiscordLogin />
+                </div>
 
-  <button
-    onClick={handleBellClick}
-    className="relative rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-white/70 transition hover:bg-white/[0.08]"
-  >
-    <Bell size={18} />
-  </button>
+                <button
+                  onClick={handleBellClick}
+                  className="relative rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-white/70 transition hover:bg-white/[0.08]"
+                >
+                  <Bell size={18} />
+
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-purple-300 px-1.5 text-[10px] font-black text-[#111018]">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
 
                 {notificationsOpen && (
                   <div className="absolute right-12 top-14 z-50 w-[calc(100vw-2rem)] max-w-sm overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#111118] shadow-2xl shadow-black/50">
@@ -281,37 +302,38 @@ export function AppShell({ children }: { children: ReactNode }) {
           </header>
 
           <ServerReleaseBanner />
-<DevelopmentBanner />
+          <DevelopmentBanner />
 
           {children}
         </section>
 
         <nav className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-1rem)] max-w-[520px] -translate-x-1/2 overflow-hidden rounded-full border border-white/10 bg-[#111018]/90 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl lg:hidden">
-  <div className="flex gap-1 overflow-x-auto scrollbar-hide">
-    {navItems.map((item) => {
-      const isActive =
-        item.href === "/"
-          ? pathname === "/"
-          : pathname.startsWith(item.href);
+          <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+            {visibleNavItems.map((item) => {
+              const isActive =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href);
 
-      return (
-        <Link
-          key={item.label}
-          href={item.href}
-          className={`flex min-w-[78px] flex-col items-center gap-1 rounded-full px-3 py-2 text-[11px] font-bold transition ${
-            isActive
-              ? "bg-white text-[#111018]"
-              : "text-white/45 hover:bg-white/[0.06] hover:text-white"
-          }`}
-        >
-          <item.icon size={16} />
-          {item.label}
-        </Link>
-      );
-    })}
-  </div>
-</nav>
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className={`flex min-w-[78px] flex-col items-center gap-1 rounded-full px-3 py-2 text-[11px] font-bold transition ${
+                    isActive
+                      ? "bg-white text-[#111018]"
+                      : "text-white/45 hover:bg-white/[0.06] hover:text-white"
+                  }`}
+                >
+                  <item.icon size={16} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
       </div>
+
       <LatestUpdatesPopup />
       <NotificationPermissionPopup />
     </main>
