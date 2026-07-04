@@ -78,32 +78,70 @@ export function AppShell({ children }: { children: ReactNode }) {
     checkStaff();
   }, [isLoggedIn]);
 
-  useEffect(() => {
-    async function loadNotifications() {
-      if (!isLoggedIn) return;
+  async function loadNotifications() {
+    if (!isLoggedIn) return;
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("id, title, message, read, created_at")
+      .eq("profile_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(8);
+
+    if (error) {
+      console.error("Notification load error:", error);
+      return;
+    }
+
+    setNotifications(data || []);
+  }
+
+  useEffect(() => {
+    loadNotifications();
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let channel: ReturnType<typeof supabase.channel>;
+
+    async function subscribeNotifications() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("id, title, message, read, created_at")
-        .eq("profile_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(8);
-
-      if (error) {
-        console.error("Notification load error:", error);
-        return;
-      }
-
-      setNotifications(data || []);
+      channel = supabase
+        .channel(`notifications-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+            filter: `profile_id=eq.${user.id}`,
+          },
+          () => {
+            loadNotifications();
+          }
+        )
+        .subscribe();
     }
 
-    loadNotifications();
+    subscribeNotifications();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [isLoggedIn]);
 
   async function markAllAsRead() {

@@ -29,12 +29,34 @@ export function OnlineMembers() {
     refreshPresence();
     loadOnlineMembers();
 
-    const interval = setInterval(() => {
+    const heartbeat = setInterval(() => {
       refreshPresence();
-      loadOnlineMembers();
     }, 30000);
 
-    return () => clearInterval(interval);
+    const cleanup = setInterval(() => {
+      loadOnlineMembers();
+    }, 15000);
+
+    const channel = supabase
+      .channel("online-members-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "online_members",
+        },
+        () => {
+          loadOnlineMembers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(heartbeat);
+      clearInterval(cleanup);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function refreshPresence() {
