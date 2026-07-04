@@ -7,16 +7,17 @@ import {
   ImageIcon,
   MessageCircle,
   Shield,
+  ShieldCheck,
+  Settings,
   Store,
   Trophy,
   User,
   Users,
 } from "lucide-react";
 
-import { Settings } from "lucide-react";
-
 export const navItems = [
   { label: "Home", href: "/", icon: Home },
+  { label: "Rules", href: "/rules", icon: ShieldCheck },
   { label: "Community", href: "/community", icon: MessageCircle },
   { label: "Events", href: "/events", icon: CalendarDays },
   { label: "Gallery", href: "/gallery", icon: Camera },

@@ -11,9 +11,9 @@ import {
   Trophy,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
-import DiscordLogin from "@/components/auth/discord-login";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { OnlineMembers } from "@/components/community/online-members";
+
 
 const stats = [
   { label: "Players Online", value: "247", icon: Radio },
@@ -70,7 +70,6 @@ export default function HomePage() {
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <DiscordLogin />
 
               <button className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-white/75 transition hover:bg-white/[0.08]">
                 Connect to Server

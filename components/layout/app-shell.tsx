@@ -12,6 +12,7 @@ import { DevelopmentBanner } from "./development-banner";
 import { LatestUpdatesPopup } from "./latest-updates-popup";
 import { ServerReleaseBanner } from "./server-release-banner";
 import { NotificationPermissionPopup } from "./notification-permission-popup";
+import DiscordLogin from "@/components/auth/discord-login";
 
 type Notification = {
   id: string;
@@ -210,19 +211,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
               </div>
 
-              <div className="relative flex items-center gap-2">
-                <button
-                  onClick={handleBellClick}
-                  className="relative rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-white/70 transition hover:bg-white/[0.08]"
-                >
-                  <Bell size={18} />
+<div className="relative flex items-center gap-2">
+  <div className="hidden sm:block">
+    <DiscordLogin />
+  </div>
 
-                  {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-purple-300 px-1.5 text-[10px] font-black text-[#111118]">
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
+  <button
+    onClick={handleBellClick}
+    className="relative rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-white/70 transition hover:bg-white/[0.08]"
+  >
+    <Bell size={18} />
+  </button>
 
                 {notificationsOpen && (
                   <div className="absolute right-12 top-14 z-50 w-[calc(100vw-2rem)] max-w-sm overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#111118] shadow-2xl shadow-black/50">
