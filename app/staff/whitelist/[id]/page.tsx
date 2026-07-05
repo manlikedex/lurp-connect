@@ -30,6 +30,7 @@ type ProfileSummary = {
 type WhitelistApplication = {
   id: string;
   reference_number: string | null;
+  application_number: number | null;
   profile_id: string;
   age: string | null;
   date_of_birth: string | null;
@@ -48,6 +49,8 @@ type WhitelistApplication = {
   completion_time_seconds: number | null;
   status: string | null;
   staff_notes: string | null;
+  decision_reason: string | null;
+  reviewed_at: string | null;
   created_at: string;
   profiles: ProfileSummary | ProfileSummary[] | null;
 };
@@ -90,6 +93,7 @@ export default function StaffWhitelistReviewPage({
     useState<WhitelistApplication | null>(null);
   const [restriction, setRestriction] = useState<Restriction | null>(null);
   const [staffNotes, setStaffNotes] = useState("");
+  const [decisionReason, setDecisionReason] = useState("");
   const [cooldownDays, setCooldownDays] = useState("7");
   const [restrictionReason, setRestrictionReason] = useState("");
   const [loading, setLoading] = useState(true);
@@ -133,6 +137,7 @@ export default function StaffWhitelistReviewPage({
         `
         id,
         reference_number,
+        application_number,
         profile_id,
         age,
         date_of_birth,
@@ -151,6 +156,8 @@ export default function StaffWhitelistReviewPage({
         completion_time_seconds,
         status,
         staff_notes,
+        decision_reason,
+        reviewed_at,
         created_at,
         profiles:profile_id (
           username,
@@ -172,6 +179,7 @@ export default function StaffWhitelistReviewPage({
     const loaded = (data as WhitelistApplication) || null;
     setApplication(loaded);
     setStaffNotes(loaded?.staff_notes || "");
+    setDecisionReason(loaded?.decision_reason || "");
     setLoading(false);
 
     if (loaded?.profile_id) {
@@ -212,7 +220,7 @@ export default function StaffWhitelistReviewPage({
     const profile = singleProfile(application.profiles);
 
     try {
-      const response = await fetch("/api/whitelist/status-webhook", {
+      await fetch("/api/whitelist/status-webhook", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -220,15 +228,13 @@ export default function StaffWhitelistReviewPage({
         body: JSON.stringify({
           status,
           message,
-          reference: application.reference_number || application.id.slice(0, 8),
+          reference:
+            application.reference_number ||
+            `#${application.application_number}` ||
+            application.id.slice(0, 8),
           discordId: profile?.discord_id || null,
         }),
       });
-
-      if (!response.ok) {
-        const body = await response.json();
-        console.error("Whitelist status webhook failed:", body);
-      }
     } catch (error) {
       console.error("Whitelist status webhook error:", error);
     }
@@ -237,17 +243,28 @@ export default function StaffWhitelistReviewPage({
   async function updateApplicationStatus(status: string) {
     if (!application) return;
 
+    if (
+      (status === "denied" || status === "changes_requested") &&
+      !decisionReason.trim()
+    ) {
+      alert("Please add a decision reason for the applicant.");
+      return;
+    }
+
     setSaving(true);
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
+    const readableStatus = status.replaceAll("_", " ");
+
     const { error } = await supabase
       .from("whitelist_applications")
       .update({
         status,
         staff_notes: staffNotes,
+        decision_reason: decisionReason || null,
         reviewed_by: user?.id || null,
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -263,20 +280,19 @@ export default function StaffWhitelistReviewPage({
     await createNotification({
       profileId: application.profile_id,
       title: "Whitelist application updated",
-      message: `Your whitelist application is now ${status.replaceAll(
-        "_",
-        " "
-      )}.`,
+      message:
+        decisionReason.trim() ||
+        `Your whitelist application is now ${readableStatus}.`,
     });
 
     await sendWhitelistStatusWebhook({
       status,
-      message: `Your whitelist application is now ${status.replaceAll(
-        "_",
-        " "
-      )}.`,
+      message:
+        decisionReason.trim() ||
+        `Your whitelist application is now ${readableStatus}.`,
     });
 
+    await loadApplication();
     setSaving(false);
   }
 
@@ -296,11 +312,15 @@ export default function StaffWhitelistReviewPage({
     } = await supabase.auth.getUser();
 
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    const reason =
+      restrictionReason ||
+      decisionReason ||
+      "Whitelist cooldown applied by staff.";
 
     const { error } = await supabase.from("whitelist_restrictions").upsert({
       profile_id: application.profile_id,
       type: "cooldown",
-      reason: restrictionReason || "Whitelist cooldown applied by staff.",
+      reason,
       expires_at: expiresAt.toISOString(),
       created_by: user?.id || null,
     });
@@ -314,17 +334,25 @@ export default function StaffWhitelistReviewPage({
     await createNotification({
       profileId: application.profile_id,
       title: "Whitelist cooldown applied",
-      message: `You cannot reapply until ${expiresAt.toLocaleString()}.`,
+      message: `You cannot reapply until ${expiresAt.toLocaleString()}. Reason: ${reason}`,
     });
 
     await sendWhitelistStatusWebhook({
       status: "cooldown",
-      message: `You have been placed on a whitelist cooldown until ${expiresAt.toLocaleString()}.`,
+      message: `You have been placed on a whitelist cooldown until ${expiresAt.toLocaleString()}. Reason: ${reason}`,
     });
 
     setRestrictionReason("");
     await loadRestrictionForProfile(application.profile_id);
     setSaving(false);
+  }
+
+  async function denyWithCooldown(days: number) {
+    setCooldownDays(String(days));
+    await updateApplicationStatus("denied");
+    setTimeout(() => {
+      applyCooldown();
+    }, 300);
   }
 
   async function applyBlacklist() {
@@ -342,10 +370,15 @@ export default function StaffWhitelistReviewPage({
       data: { user },
     } = await supabase.auth.getUser();
 
+    const reason =
+      restrictionReason ||
+      decisionReason ||
+      "Blacklisted from whitelist applications.";
+
     const { error } = await supabase.from("whitelist_restrictions").upsert({
       profile_id: application.profile_id,
       type: "blacklist",
-      reason: restrictionReason || "Blacklisted from whitelist applications.",
+      reason,
       expires_at: null,
       created_by: user?.id || null,
     });
@@ -359,12 +392,12 @@ export default function StaffWhitelistReviewPage({
     await createNotification({
       profileId: application.profile_id,
       title: "Whitelist access restricted",
-      message: "You have been restricted from submitting whitelist applications.",
+      message: reason,
     });
 
     await sendWhitelistStatusWebhook({
       status: "blacklisted",
-      message: "You have been blacklisted from submitting whitelist applications.",
+      message: reason,
     });
 
     setRestrictionReason("");
@@ -399,7 +432,8 @@ export default function StaffWhitelistReviewPage({
 
     await sendWhitelistStatusWebhook({
       status: "restriction_removed",
-      message: "Your whitelist application restriction has been removed by staff.",
+      message:
+        "Your whitelist application restriction has been removed by staff.",
     });
 
     setRestriction(null);
@@ -419,14 +453,6 @@ export default function StaffWhitelistReviewPage({
   if (!application) {
     return (
       <AppShell>
-        <Link
-          href="/staff/whitelist"
-          className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/50 hover:text-white"
-        >
-          <ArrowLeft size={16} />
-          Back to Whitelist
-        </Link>
-
         <PremiumCard>
           <h1 className="text-3xl font-black">Application not found.</h1>
         </PremiumCard>
@@ -452,7 +478,9 @@ export default function StaffWhitelistReviewPage({
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-200/70">
-                  {application.reference_number || application.id.slice(0, 8)}
+                  {application.reference_number ||
+                    `#${application.application_number}` ||
+                    application.id.slice(0, 8)}
                 </p>
 
                 <h1 className="mt-2 text-4xl font-black tracking-[-0.055em]">
@@ -551,11 +579,19 @@ export default function StaffWhitelistReviewPage({
             <h2 className="text-xl font-black">Review Decision</h2>
 
             <textarea
+              value={decisionReason}
+              onChange={(e) => setDecisionReason(e.target.value)}
+              rows={5}
+              placeholder="Reason shown to applicant..."
+              className="input-premium mt-4 resize-none"
+            />
+
+            <textarea
               value={staffNotes}
               onChange={(e) => setStaffNotes(e.target.value)}
-              rows={5}
+              rows={4}
               placeholder="Internal staff notes..."
-              className="input-premium mt-4 resize-none"
+              className="input-premium mt-3 resize-none"
             />
 
             <div className="mt-4 grid gap-2">
@@ -672,6 +708,24 @@ export default function StaffWhitelistReviewPage({
               >
                 <XCircle size={16} />
                 Deny
+              </PremiumButton>
+
+              <PremiumButton
+                onClick={() => denyWithCooldown(3)}
+                disabled={saving}
+                variant="danger"
+                className="w-full"
+              >
+                Deny + 3 Day Cooldown
+              </PremiumButton>
+
+              <PremiumButton
+                onClick={() => denyWithCooldown(7)}
+                disabled={saving}
+                variant="danger"
+                className="w-full"
+              >
+                Deny + 7 Day Cooldown
               </PremiumButton>
             </div>
           </PremiumCard>

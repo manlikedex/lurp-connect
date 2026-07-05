@@ -10,12 +10,19 @@ import {
   Gift,
   Megaphone,
   AlertTriangle,
+  Settings,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
 import { isCurrentUserStaff } from "@/lib/staff";
 
 const staffTools = [
+  {
+  title: "Member Management",
+  description: "Monitor members, ban accounts, apply timeouts and control posting permissions.",
+  href: "/staff/members",
+  icon: Users,
+},
   {
     title: "Support Tickets",
     description: "Review, reply, update and archive support tickets.",
@@ -27,6 +34,12 @@ const staffTools = [
   description: "Review, approve, deny, cooldown and blacklist whitelist applicants.",
   href: "/staff/whitelist",
   icon: ClipboardCheck,
+},
+{
+  title: "Site CMS",
+  description: "Edit homepage text, banners, links and public site content.",
+  href: "/staff/cms",
+  icon: Settings,
 },
   {
     title: "Reward Checker",
