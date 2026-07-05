@@ -311,11 +311,11 @@ export default function StaffMemberDetailPage({
       return;
     }
 
-    await createNotification({
-      profileId: id,
-      title: notificationTitle,
-      message: notificationMessage || null,
-    });
+await createNotification({
+  profileId: id,
+  title: notificationTitle,
+  message: notificationMessage || "",
+});
 
     setNotificationTitle("");
     setNotificationMessage("");
