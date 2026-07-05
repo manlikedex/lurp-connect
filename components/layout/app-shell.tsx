@@ -15,6 +15,12 @@ import {
 import { navItems } from "@/data/app-data";
 import { supabase } from "@/lib/supabase";
 import { isCurrentUserStaff } from "@/lib/staff";
+import {
+  getCurrentUserModeration,
+  isBanActive,
+  isTimeoutActive,
+  MemberModeration,
+} from "@/lib/member-moderation";
 import { DevelopmentBanner } from "./development-banner";
 import { LatestUpdatesPopup } from "./latest-updates-popup";
 import { ServerReleaseBanner } from "./server-release-banner";
@@ -29,11 +35,10 @@ type Notification = {
   created_at: string;
 };
 
-
 const navGroups = [
   {
     title: "Community",
-    items: ["Home", "Community","Whitelist", "Rules", "Events", "Gallery"],
+    items: ["Home", "Community", "Whitelist", "Rules", "Events", "Gallery"],
   },
   {
     title: "Gameplay",
@@ -41,7 +46,7 @@ const navGroups = [
   },
   {
     title: "Account",
-    items: ["Profile", "Server Link" , "Settings", "Support"],
+    items: ["Profile", "Server Link", "Settings", "Support"],
   },
 ];
 
@@ -53,6 +58,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [moderation, setModeration] = useState<MemberModeration | null>(null);
+  const [moderationChecked, setModerationChecked] = useState(false);
 
   const staffNavItem = {
     label: "Staff",
@@ -114,6 +121,52 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
 
     checkStaff();
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    async function checkModeration() {
+      if (!isLoggedIn) {
+        setModeration(null);
+        setModerationChecked(true);
+        return;
+      }
+
+      const result = await getCurrentUserModeration();
+      setModeration(result);
+      setModerationChecked(true);
+    }
+
+    checkModeration();
+
+    let channel: ReturnType<typeof supabase.channel>;
+
+    async function subscribeModeration() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      channel = supabase
+        .channel(`member-moderation-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "member_moderation",
+            filter: `profile_id=eq.${user.id}`,
+          },
+          () => checkModeration()
+        )
+        .subscribe();
+    }
+
+    if (isLoggedIn) subscribeModeration();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, [isLoggedIn]);
 
   async function loadNotifications() {
@@ -290,6 +343,54 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  if (!moderationChecked) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#07070b] text-white">
+        <div className="premium-panel rounded-[2rem] p-8 text-center">
+          <p className="text-white/55">Checking account status...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (isBanActive(moderation)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#07070b] px-4 text-white">
+        <section className="premium-panel w-full max-w-md rounded-[2rem] p-8 text-center">
+          <h1 className="text-3xl font-black">Account Banned</h1>
+          <p className="mt-3 text-sm leading-6 text-white/55">
+            {moderation?.ban_reason ||
+              "Your LURP Connect account has been banned by staff."}
+          </p>
+          {moderation?.banned_until && (
+            <p className="mt-4 text-sm font-black text-red-300">
+              Until {new Date(moderation.banned_until).toLocaleString()}
+            </p>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+  if (isTimeoutActive(moderation)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#07070b] px-4 text-white">
+        <section className="premium-panel w-full max-w-md rounded-[2rem] p-8 text-center">
+          <h1 className="text-3xl font-black">Portal Timeout</h1>
+          <p className="mt-3 text-sm leading-6 text-white/55">
+            {moderation?.timeout_reason ||
+              "You are temporarily timed out from using LURP Connect."}
+          </p>
+          {moderation?.timeout_until && (
+            <p className="mt-4 text-sm font-black text-amber-300">
+              Until {new Date(moderation.timeout_until).toLocaleString()}
+            </p>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#07070b] text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(139,92,246,0.18),transparent_34rem),radial-gradient(circle_at_100%_20%,rgba(236,72,153,0.08),transparent_30rem)]" />
@@ -404,9 +505,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/25">
                 Developed By
               </p>
-              <h3 className="mt-1 text-sm font-black text-purple-200">
-                Dex
-              </h3>
+              <h3 className="mt-1 text-sm font-black text-purple-200">Dex</h3>
             </div>
           </div>
         </aside>

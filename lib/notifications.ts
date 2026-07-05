@@ -1,37 +1,27 @@
 import { supabase } from "@/lib/supabase";
 
+type CreateNotificationInput = {
+  profileId: string;
+  title: string;
+  message?: string | null;
+};
+
 export async function createNotification({
   profileId,
   title,
-  message,
-}: {
-  profileId: string;
-  title: string;
-  message: string;
-}) {
-  if (!profileId) return;
-
-  await supabase.from("notifications").insert({
+  message = "",
+}: CreateNotificationInput) {
+  const { error } = await supabase.from("notifications").insert({
     profile_id: profileId,
     title,
-    message,
+    message: message || "",
     read: false,
   });
 
-  try {
-    await fetch("/api/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        profileId,
-        title,
-        body: message,
-        url: "/notifications",
-      }),
-    });
-  } catch (error) {
-    console.error(error);
+  if (error) {
+    console.error("Create notification error:", error);
+    return { error };
   }
+
+  return { error: null };
 }
