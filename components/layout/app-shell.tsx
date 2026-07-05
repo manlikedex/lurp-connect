@@ -41,7 +41,7 @@ const navGroups = [
   },
   {
     title: "Account",
-    items: ["Profile", "Settings", "Support"],
+    items: ["Profile", "Server Link" , "Settings", "Support"],
   },
 ];
 

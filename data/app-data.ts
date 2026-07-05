@@ -15,6 +15,7 @@ import {
   User,
   Users,
   LifeBuoy,
+  LinkIcon
 } from "lucide-react";
 
 
@@ -30,6 +31,7 @@ export const navItems = [
   { label: "Characters", href: "/characters", icon: Users },
   { label: "Achievements", href: "/achievements", icon: Trophy },
   { label: "Rewards", href: "/rewards", icon: Gift },
+  { label: "Server Link", href: "/server-link", icon: LinkIcon },
   { label: "Profile", href: "/profile", icon: User },
   { label: "Settings", href: "/settings", icon: Settings },
 
