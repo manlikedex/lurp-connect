@@ -17,7 +17,7 @@ export function DevelopmentBanner() {
           <p className="text-sm text-amber-100/70">
             Some features may be unavailable or incomplete.
             Please report bugs, issues and suggestions to
-            Dex Development.
+            Dex.
           </p>
         </div>
       </div>

@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #07070b;
+  --foreground: #f5f3ff;
 }
 
 @theme inline {
@@ -12,31 +12,8 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  opacity: 0.03;
-  pointer-events: none;
-
-  background-image:
-    radial-gradient(circle at 1px 1px,
-      rgba(255,255,255,.15) 1px,
-      transparent 0);
-  background-size: 24px 24px;
+* {
+  box-sizing: border-box;
 }
 
 html {
@@ -44,7 +21,13 @@ html {
 }
 
 body {
-  background: #08080d;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(139, 92, 246, 0.16), transparent 34rem),
+    radial-gradient(circle at top right, rgba(236, 72, 153, 0.08), transparent 30rem),
+    linear-gradient(180deg, #08080d 0%, #050507 100%);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 body::before {
@@ -56,14 +39,25 @@ body::before {
   opacity: 0.035;
   background-image: radial-gradient(
     circle at 1px 1px,
-    rgba(255, 255, 255, 0.35) 1px,
+    rgba(255, 255, 255, 0.45) 1px,
     transparent 0
   );
-  background-size: 26px 26px;
+  background-size: 28px 28px;
 }
 
 ::selection {
   background: rgba(168, 85, 247, 0.35);
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
 }
 
 .scrollbar-hide {
@@ -73,4 +67,102 @@ body::before {
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+.premium-panel {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
+    #101017;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.premium-card {
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.premium-card-hover {
+  transition:
+    transform 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.premium-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(196, 181, 253, 0.22);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.premium-muted {
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.premium-subtle {
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.input-premium {
+  width: 100%;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  color: white;
+  outline: none;
+}
+
+.input-premium::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.input-premium:focus {
+  border-color: rgba(196, 181, 253, 0.35);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.select-premium {
+  width: 100%;
+  appearance: none;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
+    #101017;
+  padding: 0.9rem 2.75rem 0.9rem 1rem;
+  font-size: 0.875rem;
+  color: white;
+  outline: none;
+}
+
+.select-wrap {
+  position: relative;
+}
+
+.select-wrap::after {
+  content: "⌄";
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-55%);
+  color: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+  font-size: 1rem;
+}
+
+.form-section {
+  border-radius: 1.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+    rgba(255, 255, 255, 0.025);
+  padding: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .form-section {
+    padding: 1.5rem;
+  }
 }

@@ -23,6 +23,12 @@ const staffTools = [
     icon: Ticket,
   },
   {
+  title: "Whitelist Applications",
+  description: "Review, approve, deny, cooldown and blacklist whitelist applicants.",
+  href: "/staff/whitelist",
+  icon: ClipboardCheck,
+},
+  {
     title: "Reward Checker",
     description: "Verify reward codes before issuing in-game rewards.",
     href: "/staff/reward-checker",

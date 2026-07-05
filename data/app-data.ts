@@ -5,6 +5,7 @@ import {
   Gift,
   Home,
   ImageIcon,
+  ClipboardCheck,
   MessageCircle,
   Shield,
   ShieldCheck,
@@ -20,6 +21,7 @@ import {
 export const navItems = [
   { label: "Home", href: "/", icon: Home },
   { label: "Rules", href: "/rules", icon: ShieldCheck },
+  { label: "Whitelist", href: "/whitelist", icon: ClipboardCheck },
   { label: "Community", href: "/community", icon: MessageCircle },
   { label: "Support", href: "/support", icon: LifeBuoy },
   { label: "Events", href: "/events", icon: CalendarDays },

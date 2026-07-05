@@ -2,10 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { motion, useScroll, useTransform } from "motion/react";
-import { Bell, Menu, ShieldCheck, User } from "lucide-react";
+import {
+  Bell,
+  ChevronRight,
+  Menu,
+  Search,
+  ShieldCheck,
+  User,
+} from "lucide-react";
 import { navItems } from "@/data/app-data";
 import { supabase } from "@/lib/supabase";
 import { isCurrentUserStaff } from "@/lib/staff";
@@ -23,12 +29,24 @@ type Notification = {
   created_at: string;
 };
 
+
+const navGroups = [
+  {
+    title: "Community",
+    items: ["Home", "Community","Whitelist", "Rules", "Events", "Gallery"],
+  },
+  {
+    title: "Gameplay",
+    items: ["Businesses", "Characters", "Achievements", "Rewards"],
+  },
+  {
+    title: "Account",
+    items: ["Profile", "Settings", "Support"],
+  },
+];
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { scrollY } = useScroll();
-
-  const glowOne = useTransform(scrollY, [0, 700], [0, 120]);
-  const glowTwo = useTransform(scrollY, [0, 700], [0, -90]);
 
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -36,9 +54,29 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
 
-  const visibleNavItems = isStaff
-    ? [...navItems, { label: "Staff", href: "/staff", icon: ShieldCheck }]
-    : navItems;
+  const staffNavItem = {
+    label: "Staff",
+    href: "/staff",
+    icon: ShieldCheck,
+  };
+
+  const visibleNavItems = isStaff ? [...navItems, staffNavItem] : navItems;
+
+  const currentPage =
+    visibleNavItems
+      .filter((item) =>
+        item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
+      )
+      .sort((a, b) => b.href.length - a.href.length)[0] || visibleNavItems[0];
+
+  const groupedNav = useMemo(() => {
+    return navGroups.map((group) => ({
+      ...group,
+      items: group.items
+        .map((label) => visibleNavItems.find((item) => item.label === label))
+        .filter(Boolean) as typeof visibleNavItems,
+    }));
+  }, [visibleNavItems]);
 
   const unreadCount = notifications.filter((item) => !item.read).length;
 
@@ -128,9 +166,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             table: "notifications",
             filter: `profile_id=eq.${user.id}`,
           },
-          () => {
-            loadNotifications();
-          }
+          () => loadNotifications()
         )
         .subscribe();
     }
@@ -160,14 +196,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     refreshPresence();
 
-    const heartbeat = setInterval(() => {
-      refreshPresence();
-    }, 30000);
+    const heartbeat = setInterval(refreshPresence, 30000);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshPresence();
-      }
+      if (document.visibilityState === "visible") refreshPresence();
     };
 
     window.addEventListener("focus", refreshPresence);
@@ -209,15 +241,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     const nextState = !notificationsOpen;
     setNotificationsOpen(nextState);
 
-    if (nextState) {
-      await markAllAsRead();
-    }
+    if (nextState) await markAllAsRead();
   }
 
   if (!authChecked) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#08080d] text-white">
-        <div className="rounded-[2rem] border border-white/10 bg-[#111118] p-8 text-center">
+      <main className="flex min-h-screen items-center justify-center bg-[#07070b] text-white">
+        <div className="premium-panel rounded-[2rem] p-8 text-center">
           <p className="text-white/55">Checking login...</p>
         </div>
       </main>
@@ -226,8 +256,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (!isLoggedIn) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#08080d] px-4 text-white">
-        <section className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#111118] p-8 text-center shadow-2xl shadow-black/40">
+      <main className="flex min-h-screen items-center justify-center bg-[#07070b] px-4 text-white">
+        <section className="premium-panel w-full max-w-md rounded-[2rem] p-8 text-center">
           <div className="mx-auto mb-5 h-20 w-20 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]">
             <Image
               src="/logo.png"
@@ -243,7 +273,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             LURP Connect
           </p>
 
-          <h1 className="mt-3 text-3xl font-black">Sign in required</h1>
+          <h1 className="mt-3 text-3xl font-black tracking-[-0.04em]">
+            Sign in required
+          </h1>
 
           <p className="mt-3 text-sm leading-6 text-white/55">
             Please sign in with Discord to access the LURP Connect community
@@ -259,21 +291,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#08080d] text-white">
-      <motion.div
-        style={{ y: glowOne }}
-        className="pointer-events-none fixed -left-52 -top-52 h-[34rem] w-[34rem] rounded-full bg-purple-700/14 blur-[150px]"
-      />
+    <main className="relative min-h-screen overflow-hidden bg-[#07070b] text-white">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(139,92,246,0.18),transparent_34rem),radial-gradient(circle_at_100%_20%,rgba(236,72,153,0.08),transparent_30rem)]" />
 
-      <motion.div
-        style={{ y: glowTwo }}
-        className="pointer-events-none fixed -right-48 top-80 h-[30rem] w-[30rem] rounded-full bg-fuchsia-500/8 blur-[140px]"
-      />
-
-      <div className="relative mx-auto grid min-h-screen w-full max-w-[1800px] grid-cols-1 lg:grid-cols-[290px_1fr]">
-        <aside className="sticky top-0 hidden h-screen flex-col border-r border-white/10 bg-[#0d0d14]/85 p-5 backdrop-blur-xl lg:flex">
-          <div>
-            <div className="mb-8 flex items-center gap-3">
+      <div className="relative mx-auto grid min-h-screen w-full max-w-[1920px] grid-cols-1 lg:grid-cols-[304px_1fr]">
+        <aside className="sticky top-0 hidden h-screen flex-col border-r border-white/10 bg-[#0b0b12]/88 p-4 backdrop-blur-2xl lg:flex">
+          <div className="mb-6 rounded-[1.7rem] border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex items-center gap-3">
               <div className="h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
                 <Image
                   src="/logo.png"
@@ -285,73 +309,110 @@ export function AppShell({ children }: { children: ReactNode }) {
                 />
               </div>
 
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/35">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-purple-200/60">
                   LURP
                 </p>
-                <h1 className="font-black">Connect</h1>
+                <h1 className="truncate text-lg font-black tracking-[-0.03em]">
+                  Connect
+                </h1>
               </div>
             </div>
-
-            <nav className="space-y-1.5">
-              {visibleNavItems.map((item) => {
-                const isActive =
-                  item.href === "/"
-                    ? pathname === "/"
-                    : pathname.startsWith(item.href);
-
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition ${
-                      isActive
-                        ? "bg-white text-[#111018] shadow-lg shadow-white/5"
-                        : "text-white/50 hover:bg-white/[0.06] hover:text-white"
-                    }`}
-                  >
-                    <item.icon size={18} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
           </div>
 
-          <div className="mt-auto pt-8">
-            <div className="mb-4 rounded-[1.6rem] border border-white/10 bg-white/[0.035] p-4">
+          <nav className="flex-1 space-y-6 overflow-y-auto pr-1">
+            {groupedNav.map((group) => (
+              <div key={group.title}>
+                <p className="mb-2 px-3 text-[10px] font-black uppercase tracking-[0.22em] text-white/25">
+                  {group.title}
+                </p>
+
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const isActive =
+                      item.href === "/"
+                        ? pathname === "/"
+                        : pathname.startsWith(item.href);
+
+                    return (
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        className={`group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold transition ${
+                          isActive
+                            ? "bg-white text-[#101017] shadow-lg shadow-white/5"
+                            : "text-white/48 hover:bg-white/[0.055] hover:text-white"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                            isActive
+                              ? "bg-black/5"
+                              : "bg-white/[0.035] text-purple-200/80 group-hover:bg-white/[0.06]"
+                          }`}
+                        >
+                          <item.icon size={17} />
+                        </span>
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {isStaff && (
+              <div>
+                <p className="mb-2 px-3 text-[10px] font-black uppercase tracking-[0.22em] text-red-200/45">
+                  Staff
+                </p>
+
+                <Link
+                  href="/staff"
+                  className={`group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold transition ${
+                    pathname.startsWith("/staff")
+                      ? "bg-white text-[#101017] shadow-lg shadow-white/5"
+                      : "text-white/48 hover:bg-white/[0.055] hover:text-white"
+                  }`}
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-300/10 text-red-200 ring-1 ring-red-300/10">
+                    <ShieldCheck size={17} />
+                  </span>
+                  Staff Portal
+                </Link>
+              </div>
+            )}
+          </nav>
+
+          <div className="mt-6 space-y-3">
+            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-300/10 text-purple-200 ring-1 ring-purple-300/15">
-                  <User size={19} />
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-purple-300/10 text-purple-200 ring-1 ring-purple-300/15">
+                  <User size={18} />
                 </div>
 
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black">LURP Member</p>
-                  <p className="truncate text-xs text-white/40">
+                  <p className="truncate text-xs text-white/35">
                     Community Platform
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/30">
+            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.025] p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/25">
                 Developed By
               </p>
-
-              <h3 className="mt-1 font-black text-purple-200">
-                Dex Development
+              <h3 className="mt-1 text-sm font-black text-purple-200">
+                Dex
               </h3>
-
-              <p className="mt-1 text-xs text-white/40">
-                LURP Connect Platform
-              </p>
             </div>
           </div>
         </aside>
 
         <section className="min-w-0 px-4 pb-28 pt-4 sm:px-6 lg:px-8 xl:px-10 lg:pb-8">
-          <header className="sticky top-4 z-40 mb-5 rounded-3xl border border-white/10 bg-[#111018]/80 px-4 py-3 shadow-2xl shadow-black/25 backdrop-blur-xl">
+          <header className="sticky top-4 z-40 mb-5 rounded-[1.7rem] border border-white/10 bg-[#0f0f17]/82 px-4 py-3 shadow-2xl shadow-black/25 backdrop-blur-2xl">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="h-10 w-10 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] lg:hidden">
@@ -366,13 +427,22 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-bold uppercase tracking-[0.22em] text-white/35">
-                    London Underworld Roleplay
-                  </p>
-                  <h2 className="truncate text-lg font-black sm:text-xl">
-                    LURP Connect
+                  <div className="flex items-center gap-1 text-xs font-bold text-white/35">
+                    <span>LURP Connect</span>
+                    <ChevronRight size={13} />
+                    <span className="text-purple-200/70">
+                      {currentPage?.label || "Dashboard"}
+                    </span>
+                  </div>
+                  <h2 className="truncate text-lg font-black tracking-[-0.03em] sm:text-xl">
+                    {currentPage?.label || "Dashboard"}
                   </h2>
                 </div>
+              </div>
+
+              <div className="hidden min-w-[280px] max-w-md flex-1 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-2.5 text-sm text-white/35 xl:flex">
+                <Search size={17} />
+                <span>Search LURP Connect...</span>
               </div>
 
               <div className="relative flex items-center gap-2">
@@ -453,10 +523,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ServerReleaseBanner />
           <DevelopmentBanner />
 
-          {children}
+          <div className="space-y-5">{children}</div>
         </section>
 
-        <nav className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-1rem)] max-w-[520px] -translate-x-1/2 overflow-hidden rounded-full border border-white/10 bg-[#111018]/90 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl lg:hidden">
+        <nav className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-1rem)] max-w-[560px] -translate-x-1/2 overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#111018]/92 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl lg:hidden">
           <div className="flex gap-1 overflow-x-auto scrollbar-hide">
             {visibleNavItems.map((item) => {
               const isActive =
@@ -468,7 +538,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex min-w-[78px] flex-col items-center gap-1 rounded-full px-3 py-2 text-[11px] font-bold transition ${
+                  className={`flex min-w-[82px] flex-col items-center gap-1 rounded-[1.2rem] px-3 py-2 text-[11px] font-bold transition ${
                     isActive
                       ? "bg-white text-[#111018]"
                       : "text-white/45 hover:bg-white/[0.06] hover:text-white"

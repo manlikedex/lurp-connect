@@ -1,7 +1,8 @@
+import Link from "next/link";
 import {
+  ArrowUpRight,
   CalendarDays,
   Camera,
-  Clock,
   Crown,
   MessageCircle,
   Radio,
@@ -9,17 +10,20 @@ import {
   Sparkles,
   Store,
   Trophy,
+  Users,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { OnlineMembers } from "@/components/community/online-members";
-
+import { PremiumCard } from "@/components/ui/premium-card";
+import { PremiumButton } from "@/components/ui/premium-button";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const stats = [
-  { label: "Players Online", value: "247", icon: Radio },
-  { label: "Community Posts", value: "128", icon: MessageCircle },
-  { label: "Events Hosted", value: "73", icon: CalendarDays },
-  { label: "Businesses", value: "41", icon: Store },
+  { label: "Players Online", value: "247", detail: "300 slots", icon: Radio },
+  { label: "Community Posts", value: "128", detail: "Live feed", icon: MessageCircle },
+  { label: "Events Hosted", value: "73", detail: "Community led", icon: CalendarDays },
+  { label: "Businesses", value: "41", detail: "Player owned", icon: Store },
 ];
 
 const feed = [
@@ -49,75 +53,103 @@ export default function HomePage() {
   return (
     <AppShell>
       <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
-        <div className="relative overflow-hidden rounded-[2.2rem] border border-white/10 bg-[#111118] p-6 shadow-2xl shadow-black/30 sm:p-8 lg:p-10">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_15%,rgba(168,85,247,0.18),transparent_32%)]" />
-          <div className="absolute -bottom-32 -right-20 h-72 w-72 rounded-full bg-fuchsia-500/10 blur-3xl" />
+        <div className="premium-panel relative overflow-hidden rounded-[2.2rem] p-6 sm:p-8 lg:p-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_14%,rgba(168,85,247,0.22),transparent_36%)]" />
+          <div className="absolute -bottom-40 -right-28 h-96 w-96 rounded-full bg-fuchsia-500/10 blur-3xl" />
 
-          <div className="relative max-w-4xl">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white/70">
-              <Crown size={14} className="text-purple-300" />
-              Official LURP Community Platform
+          <div className="relative">
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+              <StatusBadge variant="purple">Official Platform</StatusBadge>
+              <StatusBadge variant="success">Live</StatusBadge>
             </div>
 
-            <h1 className="text-balance text-5xl font-black tracking-[-0.06em] text-white sm:text-6xl xl:text-7xl">
-              London Underworld Roleplay.
-            </h1>
+            <div className="flex max-w-5xl flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-300/10 text-purple-200 ring-1 ring-purple-300/15">
+                  <Crown size={26} />
+                </div>
 
-            <p className="mt-5 max-w-2xl text-base leading-8 text-white/58">
-              A premium community hub for events, announcements, media,
-              businesses, character showcases, rewards and everything happening
-              inside LURP.
-            </p>
+                <h1 className="text-balance text-5xl font-black tracking-[-0.065em] text-white sm:text-6xl xl:text-7xl">
+                  Welcome to LURP Connect.
+                </h1>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <p className="mt-5 max-w-2xl text-base leading-8 text-white/56">
+                  Your premium community hub for London Underworld Roleplay —
+                  events, media, support, rewards, staff updates and everything
+                  happening across the city.
+                </p>
+              </div>
 
-              <button className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-white/75 transition hover:bg-white/[0.08]">
-                Connect to Server
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
+                <PremiumButton href="/community">
+                  Open Community
+                  <ArrowUpRight size={16} />
+                </PremiumButton>
+
+                <PremiumButton href="/rules" variant="secondary">
+                  View Rules
+                </PremiumButton>
+              </div>
             </div>
           </div>
         </div>
 
         <OnlineMembers />
-
-        
       </section>
 
-      <div className="mt-5">
-  <QuickActions />
-</div>
-
-      <section className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => (
-          <article
-            key={item.label}
-            className="rounded-[1.7rem] border border-white/10 bg-[#111118] p-5"
-          >
-            <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.04] text-purple-200 ring-1 ring-white/10">
-              <item.icon size={20} />
+          <PremiumCard key={item.label} hover>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-300/10 text-purple-200 ring-1 ring-purple-300/15">
+                <item.icon size={21} />
+              </div>
+
+              <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-1 text-[11px] font-black text-white/35">
+                {item.detail}
+              </span>
             </div>
-            <p className="text-sm font-bold text-white/40">{item.label}</p>
-            <h3 className="mt-2 text-3xl font-black">{item.value}</h3>
-          </article>
+
+            <p className="mt-6 text-sm font-bold text-white/38">
+              {item.label}
+            </p>
+            <h3 className="mt-2 text-4xl font-black tracking-[-0.04em]">
+              {item.value}
+            </h3>
+          </PremiumCard>
         ))}
       </section>
 
-      <section className="mt-5 grid gap-5 xl:grid-cols-[1fr_420px]">
-        <div className="rounded-[2rem] border border-white/10 bg-[#111118] p-5 sm:p-6">
+      <QuickActions />
+
+      <section className="grid gap-5 xl:grid-cols-[1fr_420px]">
+        <PremiumCard>
           <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-xl font-black">Community Feed</h2>
-            <button className="text-sm font-black text-purple-200">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-200/60">
+                Latest Activity
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-[-0.035em]">
+                Community Feed
+              </h2>
+            </div>
+
+            <Link
+              href="/community"
+              className="inline-flex items-center gap-2 text-sm font-black text-purple-200"
+            >
               View all
-            </button>
+              <ArrowUpRight size={15} />
+            </Link>
           </div>
 
           <div className="grid gap-3">
             {feed.map((item) => (
               <article
                 key={item.title}
-                className="group flex gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 transition hover:bg-white/[0.055]"
+                className="premium-card premium-card-hover flex gap-4 rounded-[1.5rem] p-4"
               >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/[0.04] text-purple-200 ring-1 ring-white/10">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/[0.045] text-purple-200 ring-1 ring-white/10">
                   <item.icon size={19} />
                 </div>
 
@@ -133,60 +165,70 @@ export default function HomePage() {
               </article>
             ))}
           </div>
-        </div>
-
+        </PremiumCard>
 
         <aside className="grid gap-5">
-          <div className="rounded-[2rem] border border-white/10 bg-[#111118] p-5">
+          <PremiumCard hover>
             <div className="mb-5 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-300/15">
-                <ShieldCheck size={20} />
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-300/15">
+                <ShieldCheck size={22} />
               </div>
               <div>
                 <p className="text-sm text-white/40">Server Status</p>
-                
-                <h2 className="text-xl font-black text-emerald-300">Online</h2>
+                <h2 className="text-2xl font-black text-emerald-300">
+                  Online
+                </h2>
               </div>
             </div>
-        
-            <p className="text-sm text-white/55">
-              247 / 300 players currently connected.
-            </p>
-          </div>
 
-          <div className="rounded-[2rem] border border-white/10 bg-[#111118] p-5">
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.04] text-purple-200 ring-1 ring-white/10">
-              <Trophy size={20} />
+            <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.035] p-4">
+              <p className="text-sm text-white/55">
+                247 / 300 players currently connected.
+              </p>
+            </div>
+          </PremiumCard>
+
+          <PremiumCard hover>
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-300/10 text-amber-200 ring-1 ring-amber-300/15">
+              <Trophy size={22} />
             </div>
             <p className="text-sm text-white/40">Top Community Member</p>
-            <h2 className="mt-2 text-2xl font-black">Dex</h2>
+            <h2 className="mt-2 text-3xl font-black tracking-[-0.04em]">
+              Dex
+            </h2>
             <p className="mt-1 text-sm text-white/55">12,450 Community XP</p>
-          </div>
-
-          
+          </PremiumCard>
         </aside>
       </section>
 
-    
-
-      <section className="mt-5 rounded-[2rem] border border-white/10 bg-[#111118] p-5 sm:p-6">
+      <PremiumCard>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-xl font-black">Featured Media</h2>
-          <button className="text-sm font-black text-purple-200">
-            Open gallery
-          </button>
-        </div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-200/60">
+              Media
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.035em]">
+              Featured Media
+            </h2>
+          </div>
 
-        
+          <Link
+            href="/gallery"
+            className="inline-flex items-center gap-2 text-sm font-black text-purple-200"
+          >
+            Open gallery
+            <ArrowUpRight size={15} />
+          </Link>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {gallery.map((item, index) => (
             <div
               key={item}
-              className="group relative h-44 overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.035]"
+              className="group relative h-48 overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/[0.035]"
             >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(168,85,247,0.28),transparent_42%)] transition group-hover:scale-110" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(168,85,247,0.3),transparent_44%)] transition duration-300 group-hover:scale-110" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
               <div className="absolute bottom-4 left-4">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-white/35">
                   0{index + 1}
@@ -196,9 +238,7 @@ export default function HomePage() {
             </div>
           ))}
         </div>
-      </section>
-
-      
+      </PremiumCard>
     </AppShell>
   );
 }
