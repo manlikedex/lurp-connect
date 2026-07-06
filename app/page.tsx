@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -19,12 +22,13 @@ import { PremiumCard } from "@/components/ui/premium-card";
 import { PremiumButton } from "@/components/ui/premium-button";
 import { StatusBadge } from "@/components/ui/status-badge";
 
-const stats = [
-  { label: "Players Online", value: "247", detail: "300 slots", icon: Radio },
-  { label: "Community Posts", value: "128", detail: "Live feed", icon: MessageCircle },
-  { label: "Events Hosted", value: "73", detail: "Community led", icon: CalendarDays },
-  { label: "Businesses", value: "41", detail: "Player owned", icon: Store },
-];
+type ServerStatus = {
+  online: boolean;
+  players: number;
+  maxPlayers: number;
+  hostname?: string;
+  gametype?: string;
+};
 
 const feed = [
   {
@@ -50,51 +54,147 @@ const feed = [
 const gallery = ["Street Scene", "Car Meet", "City Lights", "Underworld"];
 
 export default function HomePage() {
+  const [server, setServer] = useState<ServerStatus>({
+    online: false,
+    players: 0,
+    maxPlayers: 0,
+  });
+
+  useEffect(() => {
+    async function loadServerStatus() {
+      try {
+        const response = await fetch("/api/server-status", {
+          cache: "no-store",
+        });
+
+        const data = await response.json();
+        setServer(data);
+      } catch {
+        setServer({
+          online: false,
+          players: 0,
+          maxPlayers: 0,
+        });
+      }
+    }
+
+    loadServerStatus();
+
+    const interval = setInterval(loadServerStatus, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const stats = [
+    {
+      label: "Players Online",
+      value: server.online ? String(server.players) : "0",
+      detail: server.online ? `${server.maxPlayers} slots` : "Offline",
+      icon: Radio,
+    },
+    {
+      label: "Community Posts",
+      value: "Live",
+      detail: "Community feed",
+      icon: MessageCircle,
+    },
+    {
+      label: "Events",
+      value: "Active",
+      detail: "Community led",
+      icon: CalendarDays,
+    },
+    {
+      label: "Businesses",
+      value: "Open",
+      detail: "Player owned",
+      icon: Store,
+    },
+  ];
+
   return (
     <AppShell>
-      <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
-        <div className="premium-panel relative overflow-hidden rounded-[2.2rem] p-6 sm:p-8 lg:p-10">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_14%,rgba(168,85,247,0.22),transparent_36%)]" />
+      <section className="grid gap-5 xl:grid-cols-[1fr_390px]">
+        <div className="premium-panel relative overflow-hidden rounded-[2.4rem] p-6 sm:p-8 lg:p-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_14%,rgba(168,85,247,0.24),transparent_36%)]" />
           <div className="absolute -bottom-40 -right-28 h-96 w-96 rounded-full bg-fuchsia-500/10 blur-3xl" />
 
           <div className="relative">
             <div className="mb-6 flex flex-wrap items-center gap-3">
               <StatusBadge variant="purple">Official Platform</StatusBadge>
-              <StatusBadge variant="success">Live</StatusBadge>
+              <StatusBadge variant={server.online ? "success" : "danger"}>
+                {server.online ? "Server Online" : "Server Offline"}
+              </StatusBadge>
             </div>
 
-            <div className="flex max-w-5xl flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-300/10 text-purple-200 ring-1 ring-purple-300/15">
-                  <Crown size={26} />
-                </div>
-
-                <h1 className="text-balance text-5xl font-black tracking-[-0.065em] text-white sm:text-6xl xl:text-7xl">
-                  Welcome to LURP Connect.
-                </h1>
-
-                <p className="mt-5 max-w-2xl text-base leading-8 text-white/56">
-                  Your premium community hub for London Underworld Roleplay —
-                  events, media, support, rewards, staff updates and everything
-                  happening across the city.
-                </p>
+            <div className="max-w-5xl">
+              <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-300/10 text-purple-200 ring-1 ring-purple-300/15">
+                <Crown size={26} />
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
-                <PremiumButton href="/community">
-                  Open Community
+              <h1 className="text-balance text-5xl font-black tracking-[-0.065em] text-white sm:text-6xl xl:text-7xl">
+                London Underworld Roleplay.
+              </h1>
+
+              <p className="mt-5 max-w-2xl text-base leading-8 text-white/56">
+                The official LURP community hub for server access, whitelist
+                applications, support, media, rewards, events and community
+                updates.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <PremiumButton href="/server-link">
+                  Link FiveM Account
                   <ArrowUpRight size={16} />
                 </PremiumButton>
 
-                <PremiumButton href="/rules" variant="secondary">
-                  View Rules
+                <PremiumButton href="/whitelist" variant="secondary">
+                  Apply Whitelist
+                </PremiumButton>
+
+                <PremiumButton href="/community" variant="secondary">
+                  Open Community
                 </PremiumButton>
               </div>
             </div>
           </div>
         </div>
 
-        <OnlineMembers />
+        <PremiumCard hover>
+          <div className="mb-5 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-300/15">
+              <ShieldCheck size={22} />
+            </div>
+
+            <div>
+              <p className="text-sm text-white/40">Live Server</p>
+              <h2
+                className={`text-2xl font-black ${
+                  server.online ? "text-emerald-300" : "text-red-300"
+                }`}
+              >
+                {server.online ? "Online" : "Offline"}
+              </h2>
+            </div>
+          </div>
+
+          <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-white/30">
+              Current Players
+            </p>
+
+            <h3 className="mt-2 text-5xl font-black tracking-[-0.05em]">
+              {server.players}
+              <span className="text-2xl text-white/30">
+                /{server.maxPlayers || 0}
+              </span>
+            </h3>
+
+            <p className="mt-3 text-sm text-white/45">
+              {server.hostname || "London Underworld Roleplay"}
+            </p>
+          </div>
+        </PremiumCard>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -168,35 +268,20 @@ export default function HomePage() {
         </PremiumCard>
 
         <aside className="grid gap-5">
-          <PremiumCard hover>
-            <div className="mb-5 flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-300/15">
-                <ShieldCheck size={22} />
-              </div>
-              <div>
-                <p className="text-sm text-white/40">Server Status</p>
-                <h2 className="text-2xl font-black text-emerald-300">
-                  Online
-                </h2>
-              </div>
-            </div>
-
-            <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.035] p-4">
-              <p className="text-sm text-white/55">
-                247 / 300 players currently connected.
-              </p>
-            </div>
-          </PremiumCard>
+          <OnlineMembers />
 
           <PremiumCard hover>
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-300/10 text-amber-200 ring-1 ring-amber-300/15">
               <Trophy size={22} />
             </div>
-            <p className="text-sm text-white/40">Top Community Member</p>
+            <p className="text-sm text-white/40">Community Progress</p>
             <h2 className="mt-2 text-3xl font-black tracking-[-0.04em]">
-              Dex
+              Growing Daily
             </h2>
-            <p className="mt-1 text-sm text-white/55">12,450 Community XP</p>
+            <p className="mt-1 text-sm text-white/55">
+              Linked accounts, whitelist applications and player activity are
+              now managed through LURP Connect.
+            </p>
           </PremiumCard>
         </aside>
       </section>
