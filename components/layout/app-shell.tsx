@@ -38,7 +38,7 @@ type Notification = {
 const navGroups = [
   {
     title: "Community",
-    items: ["Home", "Community", "Whitelist", "Rules", "Events", "Gallery"],
+    items: ["Home", "Community", "Whitelist", "Rules", "Dev Log", "Events", "Gallery"],
   },
   {
     title: "Gameplay",

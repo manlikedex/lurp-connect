@@ -15,7 +15,8 @@ import {
   User,
   Users,
   LifeBuoy,
-  LinkIcon
+  LinkIcon,
+  FileText
 } from "lucide-react";
 
 
@@ -24,6 +25,7 @@ export const navItems = [
   { label: "Rules", href: "/rules", icon: ShieldCheck },
   { label: "Whitelist", href: "/whitelist", icon: ClipboardCheck },
   { label: "Community", href: "/community", icon: MessageCircle },
+  { label: "Dev Log", href: "/development-log", icon: FileText },
   { label: "Support", href: "/support", icon: LifeBuoy },
   { label: "Events", href: "/events", icon: CalendarDays },
   { label: "Gallery", href: "/gallery", icon: Camera },
