@@ -19,7 +19,7 @@ export async function createNotification({
   });
 
   if (error) {
-    console.error("Create notification error:", error);
+    console.error("Create notification error full:", JSON.stringify(error, null, 2));
     return { error };
   }
 

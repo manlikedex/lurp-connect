@@ -7,16 +7,19 @@ import {
   Archive,
   BadgeCheck,
   Clock,
+  FileUp,
   MessageCircle,
   Send,
   ShieldCheck,
   UserRound,
+  X,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { supabase } from "@/lib/supabase";
 import { createNotification } from "@/lib/notifications";
 
 type ProfileSummary = {
+  id?: string;
   username: string;
   display_name: string | null;
   avatar_url: string | null;
@@ -34,7 +37,7 @@ type Ticket = {
   status: string | null;
   archived: boolean | null;
   created_at: string;
-  profiles: ProfileSummary | ProfileSummary[] | null;
+  profiles: ProfileSummary | null;
 };
 
 type Message = {
@@ -44,10 +47,24 @@ type Message = {
   message: string;
   is_staff_reply: boolean | null;
   created_at: string;
-  profiles: ProfileSummary | ProfileSummary[] | null;
+  attachment_url: string | null;
+  attachment_type: string | null;
+  attachment_name: string | null;
+  profiles: ProfileSummary | null;
 };
 
 const statuses = ["open", "reviewing", "waiting_for_player", "resolved", "closed"];
+
+const allowedTypes = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+];
 
 export default function StaffTicketPage({
   params,
@@ -59,6 +76,7 @@ export default function StaffTicketPage({
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [reply, setReply] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -93,9 +111,7 @@ export default function StaffTicketPage({
           table: "support_tickets",
           filter: `id=eq.${id}`,
         },
-        () => {
-          loadTicket();
-        }
+        () => loadTicket()
       )
       .on(
         "postgres_changes",
@@ -105,19 +121,14 @@ export default function StaffTicketPage({
           table: "support_messages",
           filter: `ticket_id=eq.${id}`,
         },
-        () => {
-          loadMessages();
-        }
+        () => loadMessages()
       )
       .on("broadcast", { event: "typing" }, (payload) => {
         const typingProfileId = payload.payload?.profileId;
 
         if (typingProfileId && typingProfileId !== currentUserId) {
           setSomeoneTyping(true);
-
-          setTimeout(() => {
-            setSomeoneTyping(false);
-          }, 2500);
+          setTimeout(() => setSomeoneTyping(false), 2500);
         }
       })
       .subscribe();
@@ -129,70 +140,139 @@ export default function StaffTicketPage({
     };
   }, [id, currentUserId]);
 
-  function singleProfile(profile: ProfileSummary | ProfileSummary[] | null) {
-    return Array.isArray(profile) ? profile[0] || null : profile;
+  function handleAttachment(file: File | null) {
+    if (!file) {
+      setAttachment(null);
+      return;
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      alert("Only images and videos are allowed.");
+      return;
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+      alert("Attachment must be under 25MB.");
+      return;
+    }
+
+    setAttachment(file);
+  }
+
+  async function uploadAttachment(userId: string) {
+    if (!attachment) return null;
+
+    const extension = attachment.name.split(".").pop();
+    const safeName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    const path = `${userId}/${safeName}`;
+
+    const { error } = await supabase.storage
+      .from("ticket-attachments")
+      .upload(path, attachment, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage
+      .from("ticket-attachments")
+      .getPublicUrl(path);
+
+    return {
+      url: data.publicUrl,
+      type: attachment.type.startsWith("image/") ? "image" : "video",
+      name: attachment.name,
+    };
   }
 
   async function loadTicket() {
     const { data, error } = await supabase
       .from("support_tickets")
       .select(
-        `
-        id,
-        reference_number,
-        profile_id,
-        type,
-        category,
-        priority,
-        title,
-        description,
-        status,
-        archived,
-        created_at,
-        profiles:profile_id (
-          username,
-          display_name,
-          avatar_url
-        )
-      `
+        "id, reference_number, profile_id, type, category, priority, title, description, status, archived, created_at"
       )
       .eq("id", id)
       .maybeSingle();
 
     if (error) {
-      console.error("Ticket load error:", error);
+      console.error("Staff ticket load error full:", JSON.stringify(error, null, 2));
+      setTicket(null);
+      setLoading(false);
+      return;
     }
 
-    setTicket((data as Ticket) || null);
+    if (!data) {
+      setTicket(null);
+      setLoading(false);
+      return;
+    }
+
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .eq("id", data.profile_id)
+      .maybeSingle();
+
+    setTicket({
+      ...(data as Omit<Ticket, "profiles">),
+      profiles: (profileData as ProfileSummary) || null,
+    });
+
     setLoading(false);
   }
 
   async function loadMessages() {
-    const { data, error } = await supabase
+    const { data: messageData, error: messageError } = await supabase
       .from("support_messages")
       .select(
-        `
-        id,
-        ticket_id,
-        profile_id,
-        message,
-        is_staff_reply,
-        created_at,
-        profiles:profile_id (
-          username,
-          display_name,
-          avatar_url
-        )
-      `
+        "id, ticket_id, profile_id, message, is_staff_reply, created_at, attachment_url, attachment_type, attachment_name"
       )
       .eq("ticket_id", id)
       .order("created_at", { ascending: true });
 
-    if (error) {
-      console.error("Messages load error:", error);
+    if (messageError) {
+      console.error(
+        "Staff messages load error full:",
+        JSON.stringify(messageError, null, 2)
+      );
+      setMessages([]);
+      return;
     }
 
-    setMessages((data as Message[]) || []);
+    const profileIds = [
+      ...new Set((messageData || []).map((message) => message.profile_id)),
+    ].filter(Boolean);
+
+    let profilesById = new Map<string, ProfileSummary>();
+
+    if (profileIds.length > 0) {
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, username, display_name, avatar_url")
+        .in("id", profileIds);
+
+      if (profilesError) {
+        console.error(
+          "Staff message profiles load error full:",
+          JSON.stringify(profilesError, null, 2)
+        );
+      }
+
+      profilesById = new Map(
+        ((profilesData || []) as ProfileSummary[]).map((profile) => [
+          profile.id || "",
+          profile,
+        ])
+      );
+    }
+
+    const combinedMessages = (messageData || []).map((message) => ({
+      ...message,
+      profiles: profilesById.get(message.profile_id) || null,
+    }));
+
+    setMessages(combinedMessages as Message[]);
   }
 
   async function broadcastTyping() {
@@ -230,9 +310,12 @@ export default function StaffTicketPage({
     await createNotification({
       profileId: ticket.profile_id,
       title: "Support ticket updated",
-      message: `Your ticket ${ticket.reference_number || ticket.id.slice(0, 8)} is now ${status.replaceAll("_", " ")}.`,
+      message: `Your ticket ${
+        ticket.reference_number || ticket.id.slice(0, 8)
+      } is now ${status.replaceAll("_", " ")}.`,
     });
 
+    await loadTicket();
     setSaving(false);
   }
 
@@ -271,14 +354,17 @@ export default function StaffTicketPage({
     await createNotification({
       profileId: ticket.profile_id,
       title: "Support ticket archived",
-      message: `Your ticket ${ticket.reference_number || ticket.id.slice(0, 8)} has been archived by staff.`,
+      message: `Your ticket ${
+        ticket.reference_number || ticket.id.slice(0, 8)
+      } has been archived by staff.`,
     });
 
+    await loadTicket();
     setSaving(false);
   }
 
   async function sendReply() {
-    if (!ticket || !reply.trim()) return;
+    if (!ticket || (!reply.trim() && !attachment)) return;
 
     setSaving(true);
 
@@ -292,11 +378,25 @@ export default function StaffTicketPage({
       return;
     }
 
+    let uploadedAttachment = null;
+
+    try {
+      uploadedAttachment = await uploadAttachment(user.id);
+    } catch (error) {
+      console.error("Attachment upload error:", error);
+      alert("Attachment upload failed.");
+      setSaving(false);
+      return;
+    }
+
     const { error } = await supabase.from("support_messages").insert({
       ticket_id: ticket.id,
       profile_id: user.id,
-      message: reply,
+      message: reply || "",
       is_staff_reply: true,
+      attachment_url: uploadedAttachment?.url || null,
+      attachment_type: uploadedAttachment?.type || null,
+      attachment_name: uploadedAttachment?.name || null,
     });
 
     if (error) {
@@ -305,13 +405,24 @@ export default function StaffTicketPage({
       return;
     }
 
+    await supabase
+      .from("support_tickets")
+      .update({
+        status: "waiting_for_player",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", ticket.id);
+
     await createNotification({
       profileId: ticket.profile_id,
       title: "Staff replied to your ticket",
-      message: reply.slice(0, 120),
+      message: reply ? reply.slice(0, 120) : "Staff added an attachment.",
     });
 
     setReply("");
+    setAttachment(null);
+    await loadMessages();
+    await loadTicket();
     setSaving(false);
   }
 
@@ -343,7 +454,7 @@ export default function StaffTicketPage({
     );
   }
 
-  const ticketOwner = singleProfile(ticket.profiles);
+  const ticketOwner = ticket.profiles;
 
   return (
     <AppShell>
@@ -385,7 +496,7 @@ export default function StaffTicketPage({
 
             <div className="space-y-4">
               {messages.map((message) => {
-                const author = singleProfile(message.profiles);
+                const author = message.profiles;
 
                 return (
                   <article
@@ -416,14 +527,19 @@ export default function StaffTicketPage({
                             "LURP Member"}
                         </p>
                         <p className="text-xs text-white/35">
-                          {message.is_staff_reply ? "Staff Reply" : "Player"}
+                          {message.is_staff_reply ? "Staff Reply" : "Player"} ·{" "}
+                          {new Date(message.created_at).toLocaleString()}
                         </p>
                       </div>
                     </div>
 
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-white/65">
-                      {message.message}
-                    </p>
+                    {message.message && (
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-white/65">
+                        {message.message}
+                      </p>
+                    )}
+
+                    <AttachmentPreview message={message} />
                   </article>
                 );
               })}
@@ -441,7 +557,7 @@ export default function StaffTicketPage({
             )}
 
             {!ticket.archived && (
-              <div className="mt-6 flex gap-3">
+              <div className="mt-6 space-y-3">
                 <textarea
                   value={reply}
                   onChange={(event) => {
@@ -450,16 +566,53 @@ export default function StaffTicketPage({
                   }}
                   rows={4}
                   placeholder="Write a staff reply..."
-                  className="flex-1 resize-none rounded-[1.4rem] border border-white/10 bg-white/[0.035] p-4 text-sm text-white outline-none placeholder:text-white/25"
+                  className="w-full resize-none rounded-[1.4rem] border border-white/10 bg-white/[0.035] p-4 text-sm text-white outline-none placeholder:text-white/25"
                 />
 
-                <button
-                  onClick={sendReply}
-                  disabled={saving || !reply.trim()}
-                  className="h-fit rounded-full bg-white px-5 py-3 text-sm font-black text-[#111118] disabled:opacity-50"
-                >
-                  <Send size={17} />
-                </button>
+                {attachment && (
+                  <div className="flex items-center justify-between gap-3 rounded-[1rem] border border-purple-300/20 bg-purple-400/10 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-purple-100">
+                        {attachment.name}
+                      </p>
+                      <p className="text-xs text-purple-100/50">
+                        {(attachment.size / 1024 / 1024).toFixed(2)}MB
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setAttachment(null)}
+                      className="rounded-full bg-white/10 p-2 text-white/60 hover:bg-white/20"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-black text-white/70 transition hover:bg-white/[0.08]">
+                    <FileUp size={16} />
+                    Add Image / Video
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+                      onChange={(event) =>
+                        handleAttachment(event.target.files?.[0] || null)
+                      }
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    onClick={sendReply}
+                    disabled={saving || (!reply.trim() && !attachment)}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[#111118] disabled:opacity-50"
+                  >
+                    <Send size={17} />
+                    {saving ? "Sending..." : "Send Reply"}
+                  </button>
+                </div>
               </div>
             )}
           </section>
@@ -526,12 +679,40 @@ export default function StaffTicketPage({
               Staff Review Mode
             </h3>
             <p className="mt-2 text-sm leading-6 text-emerald-100/70">
-              Replies, status changes and archive actions update live for
-              everyone viewing this ticket.
+              Replies, status changes, attachments and archive actions update
+              live for everyone viewing this ticket.
             </p>
           </div>
         </aside>
       </section>
     </AppShell>
+  );
+}
+
+function AttachmentPreview({ message }: { message: Message }) {
+  if (!message.attachment_url) return null;
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-[1.2rem] border border-white/10 bg-black/20">
+      {message.attachment_type === "image" && (
+        <img
+          src={message.attachment_url}
+          alt={message.attachment_name || "Ticket attachment"}
+          className="max-h-[420px] w-full object-contain"
+        />
+      )}
+
+      {message.attachment_type === "video" && (
+        <video
+          src={message.attachment_url}
+          controls
+          className="max-h-[420px] w-full"
+        />
+      )}
+
+      <div className="border-t border-white/10 px-4 py-3 text-xs font-bold text-white/45">
+        {message.attachment_name || "Attachment"}
+      </div>
+    </div>
   );
 }
