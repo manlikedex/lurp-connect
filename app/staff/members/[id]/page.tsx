@@ -56,6 +56,13 @@ type ServerLink = {
   relink_required: boolean | null;
 };
 
+type SupportRestriction = {
+  id: string;
+  type: "cooldown" | "blacklist";
+  reason: string | null;
+  expires_at: string | null;
+};
+
 export default function StaffMemberDetailPage({
   params,
 }: {
@@ -66,6 +73,8 @@ export default function StaffMemberDetailPage({
   const [profile, setProfile] = useState<Profile | null>(null);
   const [moderation, setModeration] = useState<Moderation | null>(null);
   const [serverLink, setServerLink] = useState<ServerLink | null>(null);
+  const [ticketRestriction, setTicketRestriction] =
+    useState<SupportRestriction | null>(null);
 
   const [banReason, setBanReason] = useState("");
   const [banDays, setBanDays] = useState("");
@@ -74,6 +83,8 @@ export default function StaffMemberDetailPage({
   const [notes, setNotes] = useState("");
   const [notificationTitle, setNotificationTitle] = useState("");
   const [notificationMessage, setNotificationMessage] = useState("");
+  const [ticketCooldownDays, setTicketCooldownDays] = useState("7");
+  const [ticketRestrictionReason, setTicketRestrictionReason] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -103,6 +114,16 @@ export default function StaffMemberDetailPage({
         },
         () => loadMember()
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_restrictions",
+          filter: `profile_id=eq.${id}`,
+        },
+        () => loadTicketRestriction()
+      )
       .subscribe();
 
     return () => {
@@ -113,37 +134,87 @@ export default function StaffMemberDetailPage({
   async function loadMember() {
     setLoading(true);
 
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, username, display_name, avatar_url, discord_id, created_at")
-      .eq("id", id)
+    const [profileResult, moderationResult, serverLinkResult] =
+      await Promise.all([
+        supabase
+          .from("profiles")
+          .select(
+            "id, username, display_name, avatar_url, discord_id, created_at"
+          )
+          .eq("id", id)
+          .maybeSingle(),
+
+        supabase
+          .from("member_moderation")
+          .select("*")
+          .eq("profile_id", id)
+          .maybeSingle(),
+
+        supabase
+          .from("profile_server_links")
+          .select(
+            "id, cfx_identifier, license_identifier, discord_identifier, linked_at, relink_required"
+          )
+          .eq("profile_id", id)
+          .maybeSingle(),
+      ]);
+
+    if (profileResult.error) {
+      console.error(
+        "Profile load error:",
+        JSON.stringify(profileResult.error, null, 2)
+      );
+    }
+
+    if (moderationResult.error) {
+      console.error(
+        "Moderation load error:",
+        JSON.stringify(moderationResult.error, null, 2)
+      );
+    }
+
+    if (serverLinkResult.error) {
+      console.error(
+        "Server link load error:",
+        JSON.stringify(serverLinkResult.error, null, 2)
+      );
+    }
+
+    setProfile((profileResult.data as Profile) || null);
+    setModeration((moderationResult.data as Moderation) || null);
+    setServerLink((serverLinkResult.data as ServerLink) || null);
+    setNotes((moderationResult.data as Moderation | null)?.notes || "");
+
+    await loadTicketRestriction();
+    setLoading(false);
+  }
+
+  async function loadTicketRestriction() {
+    const { data, error } = await supabase
+      .from("support_restrictions")
+      .select("id, type, reason, expires_at")
+      .eq("profile_id", id)
       .maybeSingle();
 
-    if (profileError) {
-      console.error("Profile load error:", profileError);
-      setLoading(false);
+    if (error) {
+      console.error(
+        "Ticket restriction load error:",
+        JSON.stringify(error, null, 2)
+      );
+      setTicketRestriction(null);
       return;
     }
 
-    const { data: moderationData } = await supabase
-      .from("member_moderation")
-      .select("*")
-      .eq("profile_id", id)
-      .maybeSingle();
+    if (
+      data?.type === "cooldown" &&
+      data.expires_at &&
+      new Date(data.expires_at).getTime() <= Date.now()
+    ) {
+      setTicketRestriction(null);
+      return;
+    }
 
-    const { data: serverLinkData } = await supabase
-      .from("profile_server_links")
-      .select(
-        "id, cfx_identifier, license_identifier, discord_identifier, linked_at, relink_required"
-      )
-      .eq("profile_id", id)
-      .maybeSingle();
-
-    setProfile((profileData as Profile) || null);
-    setModeration((moderationData as Moderation) || null);
-    setServerLink((serverLinkData as ServerLink) || null);
-    setNotes((moderationData as Moderation)?.notes || "");
-    setLoading(false);
+    setTicketRestriction((data as SupportRestriction) || null);
   }
 
   async function saveModeration(update: Partial<Moderation>) {
@@ -181,8 +252,15 @@ export default function StaffMemberDetailPage({
   }
 
   async function banMember() {
+    const days = Number(banDays);
+
+    if (banDays && (!Number.isFinite(days) || days < 1)) {
+      alert("Enter a valid ban length.");
+      return;
+    }
+
     const bannedUntil = banDays
-      ? new Date(Date.now() + Number(banDays) * 24 * 60 * 60 * 1000).toISOString()
+      ? new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
     await saveModeration({
@@ -194,7 +272,8 @@ export default function StaffMemberDetailPage({
     await createNotification({
       profileId: id,
       title: "Account restricted",
-      message: banReason || "Your LURP Connect account has been banned by staff.",
+      message:
+        banReason || "Your LURP Connect account has been banned by staff.",
     });
 
     setBanReason("");
@@ -218,7 +297,7 @@ export default function StaffMemberDetailPage({
   async function timeoutMember() {
     const days = Number(timeoutDays);
 
-    if (!days || days < 1) {
+    if (!Number.isFinite(days) || days < 1) {
       alert("Enter a valid timeout length.");
       return;
     }
@@ -236,7 +315,9 @@ export default function StaffMemberDetailPage({
     await createNotification({
       profileId: id,
       title: "Portal timeout applied",
-      message: `You are timed out until ${new Date(timeoutUntil).toLocaleString()}.`,
+      message: `You are timed out until ${new Date(
+        timeoutUntil
+      ).toLocaleString()}.`,
     });
 
     setTimeoutReason("");
@@ -257,11 +338,139 @@ export default function StaffMemberDetailPage({
     });
   }
 
+  async function applyTicketCooldown() {
+    const days = Number(ticketCooldownDays);
+
+    if (!Number.isFinite(days) || days < 1) {
+      alert("Enter a valid cooldown length.");
+      return;
+    }
+
+    setSaving(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const expiresAt = new Date(
+      Date.now() + days * 24 * 60 * 60 * 1000
+    );
+
+    const { error } = await supabase.from("support_restrictions").upsert(
+      {
+        profile_id: id,
+        type: "cooldown",
+        reason:
+          ticketRestrictionReason ||
+          "Support ticket cooldown applied by staff.",
+        expires_at: expiresAt.toISOString(),
+        created_by: user?.id || null,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: "profile_id",
+      }
+    );
+
+    if (error) {
+      alert(error.message);
+      setSaving(false);
+      return;
+    }
+
+    await createNotification({
+      profileId: id,
+      title: "Support ticket cooldown applied",
+      message: `You cannot create new support tickets until ${expiresAt.toLocaleString()}.`,
+    });
+
+    setTicketRestrictionReason("");
+    await loadTicketRestriction();
+    setSaving(false);
+  }
+
+  async function blacklistFromTickets() {
+    const confirmed = confirm(
+      "Permanently block this member from creating support tickets?"
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { error } = await supabase.from("support_restrictions").upsert(
+      {
+        profile_id: id,
+        type: "blacklist",
+        reason:
+          ticketRestrictionReason ||
+          "Blocked from creating support tickets.",
+        expires_at: null,
+        created_by: user?.id || null,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: "profile_id",
+      }
+    );
+
+    if (error) {
+      alert(error.message);
+      setSaving(false);
+      return;
+    }
+
+    await createNotification({
+      profileId: id,
+      title: "Support ticket access restricted",
+      message: "You have been blocked from creating new support tickets.",
+    });
+
+    setTicketRestrictionReason("");
+    await loadTicketRestriction();
+    setSaving(false);
+  }
+
+  async function removeTicketRestriction() {
+    if (!ticketRestriction) return;
+
+    const confirmed = confirm("Remove this support ticket restriction?");
+    if (!confirmed) return;
+
+    setSaving(true);
+
+    const { error } = await supabase
+      .from("support_restrictions")
+      .delete()
+      .eq("id", ticketRestriction.id);
+
+    if (error) {
+      alert(error.message);
+      setSaving(false);
+      return;
+    }
+
+    await createNotification({
+      profileId: id,
+      title: "Support restriction removed",
+      message: "Staff have restored your ability to create support tickets.",
+    });
+
+    setTicketRestriction(null);
+    setSaving(false);
+  }
+
   async function forceRelink() {
     if (!serverLink) {
       alert("This member does not have a FiveM link yet.");
       return;
     }
+
+    setSaving(true);
 
     const { error } = await supabase
       .from("profile_server_links")
@@ -270,6 +479,7 @@ export default function StaffMemberDetailPage({
 
     if (error) {
       alert(error.message);
+      setSaving(false);
       return;
     }
 
@@ -280,11 +490,14 @@ export default function StaffMemberDetailPage({
     });
 
     await loadMember();
+    setSaving(false);
   }
 
   async function removeServerLink() {
     const confirmed = confirm("Remove this member's FiveM server link?");
     if (!confirmed) return;
+
+    setSaving(true);
 
     const { error } = await supabase
       .from("profile_server_links")
@@ -293,6 +506,7 @@ export default function StaffMemberDetailPage({
 
     if (error) {
       alert(error.message);
+      setSaving(false);
       return;
     }
 
@@ -303,6 +517,7 @@ export default function StaffMemberDetailPage({
     });
 
     await loadMember();
+    setSaving(false);
   }
 
   async function sendMemberNotification() {
@@ -311,14 +526,17 @@ export default function StaffMemberDetailPage({
       return;
     }
 
-await createNotification({
-  profileId: id,
-  title: notificationTitle,
-  message: notificationMessage || "",
-});
+    setSaving(true);
+
+    await createNotification({
+      profileId: id,
+      title: notificationTitle.trim(),
+      message: notificationMessage.trim(),
+    });
 
     setNotificationTitle("");
     setNotificationMessage("");
+    setSaving(false);
     alert("Notification sent.");
   }
 
@@ -345,8 +563,10 @@ await createNotification({
   const banned = Boolean(moderation?.banned);
   const timedOut =
     Boolean(moderation?.portal_timeout) &&
-    moderation?.timeout_until &&
-    new Date(moderation.timeout_until).getTime() > Date.now();
+    Boolean(
+      !moderation?.timeout_until ||
+        new Date(moderation.timeout_until).getTime() > Date.now()
+    );
 
   return (
     <AppShell>
@@ -377,7 +597,9 @@ await createNotification({
 
                 <div className="min-w-0">
                   <h1 className="truncate text-4xl font-black tracking-[-0.055em]">
-                    {profile.display_name || profile.username || "Unknown Member"}
+                    {profile.display_name ||
+                      profile.username ||
+                      "Unknown Member"}
                   </h1>
                   <p className="mt-2 truncate text-sm text-white/40">
                     {profile.id}
@@ -387,16 +609,31 @@ await createNotification({
 
               <div className="flex flex-wrap gap-2">
                 {banned && <StatusBadge variant="danger">Banned</StatusBadge>}
-                {timedOut && <StatusBadge variant="warning">Timed Out</StatusBadge>}
+                {timedOut && (
+                  <StatusBadge variant="warning">Timed Out</StatusBadge>
+                )}
                 {!banned && !timedOut && (
                   <StatusBadge variant="success">Active</StatusBadge>
+                )}
+                {ticketRestriction?.type === "cooldown" && (
+                  <StatusBadge variant="warning">
+                    Ticket Cooldown
+                  </StatusBadge>
+                )}
+                {ticketRestriction?.type === "blacklist" && (
+                  <StatusBadge variant="danger">
+                    Ticket Blacklist
+                  </StatusBadge>
                 )}
               </div>
             </div>
 
             <div className="mt-6 grid gap-3 md:grid-cols-2">
               <InfoBox label="Username" value={profile.username || "Unknown"} />
-              <InfoBox label="Discord ID" value={profile.discord_id || "Not saved"} />
+              <InfoBox
+                label="Discord ID"
+                value={profile.discord_id || "Not saved"}
+              />
               <InfoBox
                 label="Joined Portal"
                 value={
@@ -415,7 +652,7 @@ await createNotification({
           <PremiumCard>
             <SectionTitle icon={FileKey} title="FiveM Server Link" />
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <InfoBox
                 label="CFX Identifier"
                 value={serverLink?.cfx_identifier || "Not linked"}
@@ -443,11 +680,19 @@ await createNotification({
             </div>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <PremiumButton onClick={forceRelink} variant="secondary">
+              <PremiumButton
+                onClick={forceRelink}
+                disabled={saving}
+                variant="secondary"
+              >
                 Force Re-authentication
               </PremiumButton>
 
-              <PremiumButton onClick={removeServerLink} variant="danger">
+              <PremiumButton
+                onClick={removeServerLink}
+                disabled={saving}
+                variant="danger"
+              >
                 Remove FiveM Link
               </PremiumButton>
             </div>
@@ -456,18 +701,22 @@ await createNotification({
           <PremiumCard>
             <SectionTitle icon={ShieldCheck} title="Portal Permissions" />
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <PermissionToggle
                 label="Can Post"
                 enabled={moderation?.can_post !== false}
+                disabled={saving}
                 onClick={() =>
-                  saveModeration({ can_post: moderation?.can_post === false })
+                  saveModeration({
+                    can_post: moderation?.can_post === false,
+                  })
                 }
               />
 
               <PermissionToggle
                 label="Can Comment"
                 enabled={moderation?.can_comment !== false}
+                disabled={saving}
                 onClick={() =>
                   saveModeration({
                     can_comment: moderation?.can_comment === false,
@@ -478,6 +727,7 @@ await createNotification({
               <PermissionToggle
                 label="Can Create Tickets"
                 enabled={moderation?.can_create_tickets !== false}
+                disabled={saving}
                 onClick={() =>
                   saveModeration({
                     can_create_tickets:
@@ -489,6 +739,7 @@ await createNotification({
               <PermissionToggle
                 label="Can Apply Whitelist"
                 enabled={moderation?.can_apply_whitelist !== false}
+                disabled={saving}
                 onClick={() =>
                   saveModeration({
                     can_apply_whitelist:
@@ -522,17 +773,115 @@ await createNotification({
 
         <aside className="space-y-5">
           <PremiumCard>
+            <SectionTitle icon={Ticket} title="Ticket Restrictions" />
+
+            {ticketRestriction ? (
+              <div
+                className={`mt-4 rounded-[1.3rem] border p-4 ${
+                  ticketRestriction.type === "blacklist"
+                    ? "border-red-300/20 bg-red-400/10"
+                    : "border-amber-300/20 bg-amber-400/10"
+                }`}
+              >
+                <p
+                  className={`text-sm font-black capitalize ${
+                    ticketRestriction.type === "blacklist"
+                      ? "text-red-300"
+                      : "text-amber-300"
+                  }`}
+                >
+                  {ticketRestriction.type}
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-white/65">
+                  {ticketRestriction.reason || "No reason provided."}
+                </p>
+
+                {ticketRestriction.expires_at && (
+                  <p className="mt-2 text-xs text-white/45">
+                    Expires{" "}
+                    {new Date(
+                      ticketRestriction.expires_at
+                    ).toLocaleString()}
+                  </p>
+                )}
+
+                <PremiumButton
+                  onClick={removeTicketRestriction}
+                  disabled={saving}
+                  variant="secondary"
+                  className="mt-4 w-full"
+                >
+                  Remove Ticket Restriction
+                </PremiumButton>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-white/45">
+                No active ticket restriction.
+              </p>
+            )}
+
+            <textarea
+              rows={3}
+              value={ticketRestrictionReason}
+              onChange={(event) =>
+                setTicketRestrictionReason(event.target.value)
+              }
+              className="input-premium mt-4 resize-none"
+              placeholder="Ticket restriction reason..."
+            />
+
+            <div className="mt-3 grid gap-2">
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <input
+                  value={ticketCooldownDays}
+                  onChange={(event) =>
+                    setTicketCooldownDays(event.target.value)
+                  }
+                  className="input-premium"
+                  inputMode="numeric"
+                  placeholder="Days"
+                />
+
+                <PremiumButton
+                  onClick={applyTicketCooldown}
+                  disabled={saving}
+                  variant="secondary"
+                >
+                  <Clock size={16} />
+                  Cooldown
+                </PremiumButton>
+              </div>
+
+              <PremiumButton
+                onClick={blacklistFromTickets}
+                disabled={saving}
+                variant="danger"
+                className="w-full"
+              >
+                <Ban size={16} />
+                Blacklist From Tickets
+              </PremiumButton>
+            </div>
+          </PremiumCard>
+
+          <PremiumCard>
             <SectionTitle icon={Ban} title="Ban Controls" />
 
             {banned && (
               <div className="mt-4 rounded-[1.3rem] border border-red-300/20 bg-red-400/10 p-4">
-                <p className="text-sm font-black text-red-300">Currently banned</p>
+                <p className="text-sm font-black text-red-300">
+                  Currently banned
+                </p>
                 <p className="mt-2 text-sm text-red-100/70">
                   {moderation?.ban_reason || "No reason provided."}
                 </p>
                 {moderation?.banned_until && (
                   <p className="mt-2 text-xs text-red-100/50">
-                    Until {new Date(moderation.banned_until).toLocaleString()}
+                    Until{" "}
+                    {new Date(
+                      moderation.banned_until
+                    ).toLocaleString()}
                   </p>
                 )}
               </div>
@@ -550,16 +899,25 @@ await createNotification({
               value={banDays}
               onChange={(event) => setBanDays(event.target.value)}
               className="input-premium mt-3"
+              inputMode="numeric"
               placeholder="Optional ban length in days"
             />
 
             <div className="mt-4 grid gap-2">
-              <PremiumButton onClick={banMember} disabled={saving} variant="danger">
+              <PremiumButton
+                onClick={banMember}
+                disabled={saving}
+                variant="danger"
+              >
                 <Ban size={16} />
                 Ban Member
               </PremiumButton>
 
-              <PremiumButton onClick={unbanMember} disabled={saving} variant="secondary">
+              <PremiumButton
+                onClick={unbanMember}
+                disabled={saving}
+                variant="secondary"
+              >
                 <XCircle size={16} />
                 Unban Member
               </PremiumButton>
@@ -577,9 +935,14 @@ await createNotification({
                 <p className="mt-2 text-sm text-amber-100/70">
                   {moderation?.timeout_reason || "No reason provided."}
                 </p>
-                <p className="mt-2 text-xs text-amber-100/50">
-                  Until {new Date(moderation!.timeout_until!).toLocaleString()}
-                </p>
+                {moderation?.timeout_until && (
+                  <p className="mt-2 text-xs text-amber-100/50">
+                    Until{" "}
+                    {new Date(
+                      moderation.timeout_until
+                    ).toLocaleString()}
+                  </p>
+                )}
               </div>
             )}
 
@@ -595,15 +958,24 @@ await createNotification({
               value={timeoutDays}
               onChange={(event) => setTimeoutDays(event.target.value)}
               className="input-premium mt-3"
+              inputMode="numeric"
               placeholder="Timeout length in days"
             />
 
             <div className="mt-4 grid gap-2">
-              <PremiumButton onClick={timeoutMember} disabled={saving} variant="secondary">
+              <PremiumButton
+                onClick={timeoutMember}
+                disabled={saving}
+                variant="secondary"
+              >
                 Apply Timeout
               </PremiumButton>
 
-              <PremiumButton onClick={removeTimeout} disabled={saving} variant="secondary">
+              <PremiumButton
+                onClick={removeTimeout}
+                disabled={saving}
+                variant="secondary"
+              >
                 Remove Timeout
               </PremiumButton>
             </div>
@@ -614,7 +986,9 @@ await createNotification({
 
             <input
               value={notificationTitle}
-              onChange={(event) => setNotificationTitle(event.target.value)}
+              onChange={(event) =>
+                setNotificationTitle(event.target.value)
+              }
               className="input-premium mt-4"
               placeholder="Notification title"
             />
@@ -622,7 +996,9 @@ await createNotification({
             <textarea
               rows={4}
               value={notificationMessage}
-              onChange={(event) => setNotificationMessage(event.target.value)}
+              onChange={(event) =>
+                setNotificationMessage(event.target.value)
+              }
               className="input-premium mt-3 resize-none"
               placeholder="Notification message"
             />
@@ -637,19 +1013,31 @@ await createNotification({
           </PremiumCard>
 
           <PremiumCard>
-            <SectionTitle icon={ShieldAlert} title="Moderation Summary" />
+            <SectionTitle
+              icon={ShieldAlert}
+              title="Moderation Summary"
+            />
 
             <div className="mt-4 space-y-3 text-sm text-white/55">
-              <p>Posting: {moderation?.can_post === false ? "Blocked" : "Allowed"}</p>
+              <p>
+                Posting:{" "}
+                {moderation?.can_post === false ? "Blocked" : "Allowed"}
+              </p>
               <p>
                 Commenting:{" "}
-                {moderation?.can_comment === false ? "Blocked" : "Allowed"}
+                {moderation?.can_comment === false
+                  ? "Blocked"
+                  : "Allowed"}
               </p>
               <p>
                 Tickets:{" "}
                 {moderation?.can_create_tickets === false
                   ? "Blocked"
-                  : "Allowed"}
+                  : ticketRestriction
+                    ? ticketRestriction.type === "blacklist"
+                      ? "Blacklisted"
+                      : "Cooldown"
+                    : "Allowed"}
               </p>
               <p>
                 Whitelist:{" "}
@@ -682,13 +1070,21 @@ function SectionTitle({
   );
 }
 
-function InfoBox({ label, value }: { label: string; value: string }) {
+function InfoBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.035] p-4">
       <p className="text-xs font-black uppercase tracking-[0.18em] text-white/30">
         {label}
       </p>
-      <p className="mt-2 break-all text-sm font-black text-white/75">{value}</p>
+      <p className="mt-2 break-all text-sm font-black text-white/75">
+        {value}
+      </p>
     </div>
   );
 }
@@ -696,17 +1092,20 @@ function InfoBox({ label, value }: { label: string; value: string }) {
 function PermissionToggle({
   label,
   enabled,
+  disabled,
   onClick,
 }: {
   label: string;
   enabled: boolean;
+  disabled: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center justify-between rounded-[1.3rem] border p-4 text-left transition ${
+      disabled={disabled}
+      className={`flex items-center justify-between rounded-[1.3rem] border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
         enabled
           ? "border-emerald-300/20 bg-emerald-400/10"
           : "border-red-300/20 bg-red-400/10"
@@ -716,7 +1115,9 @@ function PermissionToggle({
 
       <span
         className={`rounded-full px-3 py-1 text-xs font-black ${
-          enabled ? "bg-emerald-300 text-[#101017]" : "bg-red-300 text-[#101017]"
+          enabled
+            ? "bg-emerald-300 text-[#101017]"
+            : "bg-red-300 text-[#101017]"
         }`}
       >
         {enabled ? "Allowed" : "Blocked"}
