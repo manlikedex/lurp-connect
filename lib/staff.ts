@@ -5,7 +5,8 @@ export type StaffRole =
   | "staff"
   | "moderator"
   | "admin"
-  | "god";
+  | "god"
+  | "owner";
 
 export type StaffMember = {
   profile_id: string;
@@ -19,9 +20,29 @@ const validStaffRoles: StaffRole[] = [
   "moderator",
   "admin",
   "god",
+  "owner",
 ];
 
 const supportRoutes = ["/staff", "/staff/tickets"];
+
+const regularStaffRoutes = [
+  "/staff",
+  "/staff/tickets",
+  "/staff/whitelist",
+  "/staff/events",
+  "/staff/businesses",
+];
+
+const moderatorBlockedRoutes = [
+  "/staff/cms",
+  "/staff/settings",
+  "/staff/manage-staff",
+  "/staff/developer",
+];
+
+function routeMatches(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
 
 function isValidStaffRole(value: unknown): value is StaffRole {
   return (
@@ -36,7 +57,15 @@ export async function getCurrentStaffMember(): Promise<StaffMember | null> {
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
+  if (userError) {
+    console.error(
+      "Current staff auth error:",
+      JSON.stringify(userError, null, 2)
+    );
+    return null;
+  }
+
+  if (!user) {
     return null;
   }
 
@@ -47,14 +76,15 @@ export async function getCurrentStaffMember(): Promise<StaffMember | null> {
     .eq("active", true)
     .maybeSingle();
 
-  if (error || !data || !isValidStaffRole(data.role)) {
-    if (error) {
-      console.error(
-        "Staff member check error:",
-        JSON.stringify(error, null, 2)
-      );
-    }
+  if (error) {
+    console.error(
+      "Staff member check error:",
+      JSON.stringify(error, null, 2)
+    );
+    return null;
+  }
 
+  if (!data || !isValidStaffRole(data.role)) {
     return null;
   }
 
@@ -80,15 +110,32 @@ export async function isCurrentUserSupport(): Promise<boolean> {
   return role === "support";
 }
 
+export async function isCurrentUserModerator(): Promise<boolean> {
+  const role = await getCurrentStaffRole();
+
+  return (
+    role === "moderator" ||
+    role === "admin" ||
+    role === "god" ||
+    role === "owner"
+  );
+}
+
 export async function isCurrentUserAdmin(): Promise<boolean> {
   const role = await getCurrentStaffRole();
 
-  return role === "admin" || role === "god";
+  return role === "admin" || role === "god" || role === "owner";
 }
 
 export async function isCurrentUserGod(): Promise<boolean> {
   const role = await getCurrentStaffRole();
-  return role === "god";
+
+  return role === "god" || role === "owner";
+}
+
+export async function isCurrentUserOwner(): Promise<boolean> {
+  const role = await getCurrentStaffRole();
+  return role === "owner";
 }
 
 export function canRoleManageTickets(role: StaffRole | null): boolean {
@@ -100,7 +147,8 @@ export function canRoleManageWhitelist(role: StaffRole | null): boolean {
     role === "staff" ||
     role === "moderator" ||
     role === "admin" ||
-    role === "god"
+    role === "god" ||
+    role === "owner"
   );
 }
 
@@ -108,12 +156,13 @@ export function canRoleManageMembers(role: StaffRole | null): boolean {
   return (
     role === "moderator" ||
     role === "admin" ||
-    role === "god"
+    role === "god" ||
+    role === "owner"
   );
 }
 
 export function canRoleManageCMS(role: StaffRole | null): boolean {
-  return role === "admin" || role === "god";
+  return role === "admin" || role === "god" || role === "owner";
 }
 
 export function canRoleManageEvents(role: StaffRole | null): boolean {
@@ -121,12 +170,29 @@ export function canRoleManageEvents(role: StaffRole | null): boolean {
     role === "staff" ||
     role === "moderator" ||
     role === "admin" ||
-    role === "god"
+    role === "god" ||
+    role === "owner"
+  );
+}
+
+export function canRoleManageBusinesses(role: StaffRole | null): boolean {
+  return (
+    role === "staff" ||
+    role === "moderator" ||
+    role === "admin" ||
+    role === "god" ||
+    role === "owner"
   );
 }
 
 export function canRoleManageStaff(role: StaffRole | null): boolean {
-  return role === "admin" || role === "god";
+  return role === "admin" || role === "god" || role === "owner";
+}
+
+export function canRoleAccessDeveloperTools(
+  role: StaffRole | null
+): boolean {
+  return role === "god" || role === "owner";
 }
 
 export function canRoleAccessStaffRoute(
@@ -137,46 +203,23 @@ export function canRoleAccessStaffRoute(
     return false;
   }
 
-  if (role === "god" || role === "admin") {
+  if (role === "owner" || role === "god" || role === "admin") {
     return true;
   }
 
   if (role === "support") {
-    return supportRoutes.some(
-      (route) =>
-        pathname === route ||
-        pathname.startsWith(`${route}/`)
-    );
+    return supportRoutes.some((route) => routeMatches(pathname, route));
   }
 
   if (role === "moderator") {
-    const blockedRoutes = [
-      "/staff/cms",
-      "/staff/settings",
-      "/staff/manage-staff",
-      "/staff/developer",
-    ];
-
-    return !blockedRoutes.some(
-      (route) =>
-        pathname === route ||
-        pathname.startsWith(`${route}/`)
+    return !moderatorBlockedRoutes.some((route) =>
+      routeMatches(pathname, route)
     );
   }
 
   if (role === "staff") {
-    const allowedRoutes = [
-      "/staff",
-      "/staff/tickets",
-      "/staff/whitelist",
-      "/staff/events",
-      "/staff/businesses",
-    ];
-
-    return allowedRoutes.some(
-      (route) =>
-        pathname === route ||
-        pathname.startsWith(`${route}/`)
+    return regularStaffRoutes.some((route) =>
+      routeMatches(pathname, route)
     );
   }
 
@@ -189,4 +232,52 @@ export function getStaffHomeRoute(role: StaffRole | null): string {
   }
 
   return "/staff";
+}
+
+export function getStaffRoleLabel(role: StaffRole | null): string {
+  switch (role) {
+    case "support":
+      return "Support";
+    case "staff":
+      return "Staff";
+    case "moderator":
+      return "Moderator";
+    case "admin":
+      return "Admin";
+    case "god":
+      return "God";
+    case "owner":
+      return "Owner";
+    default:
+      return "Member";
+  }
+}
+
+export function getStaffRolePriority(role: StaffRole | null): number {
+  switch (role) {
+    case "owner":
+      return 6;
+    case "god":
+      return 5;
+    case "admin":
+      return 4;
+    case "moderator":
+      return 3;
+    case "staff":
+      return 2;
+    case "support":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+export function hasEqualOrHigherRole(
+  currentRole: StaffRole | null,
+  requiredRole: StaffRole
+): boolean {
+  return (
+    getStaffRolePriority(currentRole) >=
+    getStaffRolePriority(requiredRole)
+  );
 }
