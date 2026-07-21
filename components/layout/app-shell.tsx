@@ -14,12 +14,16 @@ import {
 } from "lucide-react";
 import { navItems } from "@/data/app-data";
 import { supabase } from "@/lib/supabase";
-import { isCurrentUserStaff } from "@/lib/staff";
+import {
+  getCurrentStaffRole,
+  getStaffRoleLabel,
+  type StaffRole,
+} from "@/lib/staff";
 import {
   getCurrentUserModeration,
   isBanActive,
   isTimeoutActive,
-  MemberModeration,
+  type MemberModeration,
 } from "@/lib/member-moderation";
 import { DevelopmentBanner } from "./development-banner";
 import { LatestUpdatesPopup } from "./latest-updates-popup";
@@ -38,7 +42,15 @@ type Notification = {
 const navGroups = [
   {
     title: "Community",
-    items: ["Home", "Community", "Whitelist", "Rules", "Dev Log", "Events", "Gallery"],
+    items: [
+      "Home",
+      "Community",
+      "Whitelist",
+      "Rules",
+      "Events",
+      "Gallery",
+      "Dev Log",
+    ],
   },
   {
     title: "Gameplay",
@@ -55,10 +67,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const [authChecked, setAuthChecked] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
   const [isStaff, setIsStaff] = useState(false);
-  const [moderation, setModeration] = useState<MemberModeration | null>(null);
+  const [staffRole, setStaffRole] = useState<StaffRole | null>(null);
+
+  const [moderation, setModeration] =
+    useState<MemberModeration | null>(null);
   const [moderationChecked, setModerationChecked] = useState(false);
 
   const staffNavItem = {
@@ -67,25 +84,40 @@ export function AppShell({ children }: { children: ReactNode }) {
     icon: ShieldCheck,
   };
 
-  const visibleNavItems = isStaff ? [...navItems, staffNavItem] : navItems;
+  const visibleNavItems = isStaff
+    ? [...navItems, staffNavItem]
+    : navItems;
 
   const currentPage =
     visibleNavItems
       .filter((item) =>
-        item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
+        item.href === "/"
+          ? pathname === "/"
+          : pathname.startsWith(item.href)
       )
-      .sort((a, b) => b.href.length - a.href.length)[0] || visibleNavItems[0];
+      .sort((a, b) => b.href.length - a.href.length)[0] ||
+    visibleNavItems[0];
 
   const groupedNav = useMemo(() => {
     return navGroups.map((group) => ({
       ...group,
       items: group.items
-        .map((label) => visibleNavItems.find((item) => item.label === label))
+        .map((label) =>
+          visibleNavItems.find((item) => item.label === label)
+        )
         .filter(Boolean) as typeof visibleNavItems,
     }));
   }, [visibleNavItems]);
 
   const unreadCount = notifications.filter((item) => !item.read).length;
+
+  const sidebarRoleTitle = staffRole
+    ? `LURP ${getStaffRoleLabel(staffRole)}`
+    : "LURP Member";
+
+  const sidebarRoleSubtitle = staffRole
+    ? "Staff Team"
+    : "Community Platform";
 
   useEffect(() => {
     async function checkAuth() {
@@ -106,21 +138,66 @@ export function AppShell({ children }: { children: ReactNode }) {
       setAuthChecked(true);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     async function checkStaff() {
       if (!isLoggedIn) {
         setIsStaff(false);
+        setStaffRole(null);
         return;
       }
 
-      const result = await isCurrentUserStaff();
-      setIsStaff(result);
+      const role = await getCurrentStaffRole();
+
+      setStaffRole(role);
+      setIsStaff(Boolean(role));
     }
 
     checkStaff();
+
+    if (!isLoggedIn) {
+      return;
+    }
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function subscribeToStaffRole() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return;
+      }
+
+      channel = supabase
+        .channel(`staff-role-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "staff_members",
+            filter: `profile_id=eq.${user.id}`,
+          },
+          () => {
+            checkStaff();
+          }
+        )
+        .subscribe();
+    }
+
+    subscribeToStaffRole();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -132,20 +209,28 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
 
       const result = await getCurrentUserModeration();
+
       setModeration(result);
       setModerationChecked(true);
     }
 
+    setModerationChecked(false);
     checkModeration();
 
-    let channel: ReturnType<typeof supabase.channel>;
+    if (!isLoggedIn) {
+      return;
+    }
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     async function subscribeModeration() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) return;
+      if (!user) {
+        return;
+      }
 
       channel = supabase
         .channel(`member-moderation-${user.id}`)
@@ -157,26 +242,36 @@ export function AppShell({ children }: { children: ReactNode }) {
             table: "member_moderation",
             filter: `profile_id=eq.${user.id}`,
           },
-          () => checkModeration()
+          () => {
+            checkModeration();
+          }
         )
         .subscribe();
     }
 
-    if (isLoggedIn) subscribeModeration();
+    subscribeModeration();
 
     return () => {
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [isLoggedIn]);
 
   async function loadNotifications() {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      setNotifications([]);
+      return;
+    }
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
 
     const { data, error } = await supabase
       .from("notifications")
@@ -186,11 +281,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       .limit(8);
 
     if (error) {
-      console.error("Notification load error:", error);
+      console.error(
+        "Notification load error:",
+        JSON.stringify(error, null, 2)
+      );
       return;
     }
 
-    setNotifications(data || []);
+    setNotifications((data as Notification[]) || []);
   }
 
   useEffect(() => {
@@ -198,16 +296,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      return;
+    }
 
-    let channel: ReturnType<typeof supabase.channel>;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     async function subscribeNotifications() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) return;
+      if (!user) {
+        return;
+      }
 
       channel = supabase
         .channel(`notifications-${user.id}`)
@@ -219,7 +321,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             table: "notifications",
             filter: `profile_id=eq.${user.id}`,
           },
-          () => loadNotifications()
+          () => {
+            loadNotifications();
+          }
         )
         .subscribe();
     }
@@ -227,41 +331,69 @@ export function AppShell({ children }: { children: ReactNode }) {
     subscribeNotifications();
 
     return () => {
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      return;
+    }
 
     async function refreshPresence() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) return;
+      if (!user) {
+        return;
+      }
 
-      await supabase.from("online_members").upsert({
-        profile_id: user.id,
-        last_seen: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from("online_members")
+        .upsert(
+          {
+            profile_id: user.id,
+            last_seen: new Date().toISOString(),
+          },
+          {
+            onConflict: "profile_id",
+          }
+        );
+
+      if (error) {
+        console.error(
+          "Presence update error:",
+          JSON.stringify(error, null, 2)
+        );
+      }
     }
 
     refreshPresence();
 
-    const heartbeat = setInterval(refreshPresence, 30000);
+    const heartbeat = window.setInterval(refreshPresence, 30000);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") refreshPresence();
+      if (document.visibilityState === "visible") {
+        refreshPresence();
+      }
     };
 
     window.addEventListener("focus", refreshPresence);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
 
     return () => {
-      clearInterval(heartbeat);
+      window.clearInterval(heartbeat);
       window.removeEventListener("focus", refreshPresence);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
     };
   }, [isLoggedIn]);
 
@@ -270,7 +402,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       .filter((item) => !item.read)
       .map((item) => item.id);
 
-    if (unreadIds.length === 0) return;
+    if (unreadIds.length === 0) {
+      return;
+    }
 
     const { error } = await supabase
       .from("notifications")
@@ -278,7 +412,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       .in("id", unreadIds);
 
     if (error) {
-      console.error("Mark notifications read error:", error);
+      console.error(
+        "Mark notifications read error:",
+        JSON.stringify(error, null, 2)
+      );
       return;
     }
 
@@ -292,9 +429,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   async function handleBellClick() {
     const nextState = !notificationsOpen;
+
     setNotificationsOpen(nextState);
 
-    if (nextState) await markAllAsRead();
+    if (nextState) {
+      await markAllAsRead();
+    }
   }
 
   if (!authChecked) {
@@ -331,8 +471,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-white/55">
-            Please sign in with Discord to access the LURP Connect community
-            platform.
+            Please sign in with Discord to access the LURP Connect
+            community platform.
           </p>
 
           <div className="mt-6">
@@ -357,16 +497,31 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#07070b] px-4 text-white">
         <section className="premium-panel w-full max-w-md rounded-[2rem] p-8 text-center">
-          <h1 className="text-3xl font-black">Account Banned</h1>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-red-400/10 text-red-300 ring-1 ring-red-300/20">
+            <ShieldCheck size={26} />
+          </div>
+
+          <h1 className="mt-5 text-3xl font-black">
+            Account Banned
+          </h1>
+
           <p className="mt-3 text-sm leading-6 text-white/55">
             {moderation?.ban_reason ||
               "Your LURP Connect account has been banned by staff."}
           </p>
+
           {moderation?.banned_until && (
             <p className="mt-4 text-sm font-black text-red-300">
-              Until {new Date(moderation.banned_until).toLocaleString()}
+              Until{" "}
+              {new Date(
+                moderation.banned_until
+              ).toLocaleString()}
             </p>
           )}
+
+          <div className="mt-6">
+            <DiscordLogin />
+          </div>
         </section>
       </main>
     );
@@ -376,16 +531,31 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#07070b] px-4 text-white">
         <section className="premium-panel w-full max-w-md rounded-[2rem] p-8 text-center">
-          <h1 className="text-3xl font-black">Portal Timeout</h1>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-400/10 text-amber-300 ring-1 ring-amber-300/20">
+            <ShieldCheck size={26} />
+          </div>
+
+          <h1 className="mt-5 text-3xl font-black">
+            Portal Timeout
+          </h1>
+
           <p className="mt-3 text-sm leading-6 text-white/55">
             {moderation?.timeout_reason ||
               "You are temporarily timed out from using LURP Connect."}
           </p>
+
           {moderation?.timeout_until && (
             <p className="mt-4 text-sm font-black text-amber-300">
-              Until {new Date(moderation.timeout_until).toLocaleString()}
+              Until{" "}
+              {new Date(
+                moderation.timeout_until
+              ).toLocaleString()}
             </p>
           )}
+
+          <div className="mt-6">
+            <DiscordLogin />
+          </div>
         </section>
       </main>
     );
@@ -414,6 +584,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <p className="text-[10px] font-black uppercase tracking-[0.24em] text-purple-200/60">
                   LURP
                 </p>
+
                 <h1 className="truncate text-lg font-black tracking-[-0.03em]">
                   Connect
                 </h1>
@@ -454,6 +625,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                         >
                           <item.icon size={17} />
                         </span>
+
                         {item.label}
                       </Link>
                     );
@@ -469,7 +641,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </p>
 
                 <Link
-                  href="/staff"
+                  href={
+                    staffRole === "support"
+                      ? "/staff/tickets"
+                      : "/staff"
+                  }
                   className={`group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold transition ${
                     pathname.startsWith("/staff")
                       ? "bg-white text-[#101017] shadow-lg shadow-white/5"
@@ -479,7 +655,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-300/10 text-red-200 ring-1 ring-red-300/10">
                     <ShieldCheck size={17} />
                   </span>
-                  Staff Portal
+
+                  {staffRole === "support"
+                    ? "Support Portal"
+                    : "Staff Portal"}
                 </Link>
               </div>
             )}
@@ -488,14 +667,27 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mt-6 space-y-3">
             <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-purple-300/10 text-purple-200 ring-1 ring-purple-300/15">
-                  <User size={18} />
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-2xl ring-1 ${
+                    staffRole
+                      ? "bg-red-300/10 text-red-200 ring-red-300/15"
+                      : "bg-purple-300/10 text-purple-200 ring-purple-300/15"
+                  }`}
+                >
+                  {staffRole ? (
+                    <ShieldCheck size={18} />
+                  ) : (
+                    <User size={18} />
+                  )}
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-black">LURP Member</p>
+                  <p className="truncate text-sm font-black">
+                    {sidebarRoleTitle}
+                  </p>
+
                   <p className="truncate text-xs text-white/35">
-                    Community Platform
+                    {sidebarRoleSubtitle}
                   </p>
                 </div>
               </div>
@@ -505,12 +697,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/25">
                 Developed By
               </p>
-              <h3 className="mt-1 text-sm font-black text-purple-200">Dex</h3>
+
+              <h3 className="mt-1 text-sm font-black text-purple-200">
+                Dex
+              </h3>
             </div>
           </div>
         </aside>
 
-        <section className="min-w-0 px-4 pb-28 pt-4 sm:px-6 lg:px-8 xl:px-10 lg:pb-8">
+        <section className="min-w-0 px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-8 xl:px-10">
           <header className="sticky top-4 z-40 mb-5 rounded-[1.7rem] border border-white/10 bg-[#0f0f17]/82 px-4 py-3 shadow-2xl shadow-black/25 backdrop-blur-2xl">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
@@ -529,10 +724,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div className="flex items-center gap-1 text-xs font-bold text-white/35">
                     <span>LURP Connect</span>
                     <ChevronRight size={13} />
+
                     <span className="text-purple-200/70">
                       {currentPage?.label || "Dashboard"}
                     </span>
                   </div>
+
                   <h2 className="truncate text-lg font-black tracking-[-0.03em] sm:text-xl">
                     {currentPage?.label || "Dashboard"}
                   </h2>
@@ -550,7 +747,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
 
                 <button
+                  type="button"
                   onClick={handleBellClick}
+                  aria-label="Open notifications"
                   className="relative rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-white/70 transition hover:bg-white/[0.08]"
                 >
                   <Bell size={18} />
@@ -565,7 +764,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {notificationsOpen && (
                   <div className="absolute right-12 top-14 z-50 w-[calc(100vw-2rem)] max-w-sm overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#111118] shadow-2xl shadow-black/50">
                     <div className="border-b border-white/10 p-4">
-                      <p className="text-sm font-black">Notifications</p>
+                      <p className="text-sm font-black">
+                        Notifications
+                      </p>
+
                       <p className="mt-1 text-xs text-white/40">
                         Latest updates from LURP Connect
                       </p>
@@ -586,7 +788,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                           <div className="flex gap-3">
                             <div
                               className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                                item.read ? "bg-white/20" : "bg-purple-300"
+                                item.read
+                                  ? "bg-white/20"
+                                  : "bg-purple-300"
                               }`}
                             />
 
@@ -602,7 +806,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                               )}
 
                               <p className="mt-2 text-xs text-white/30">
-                                {new Date(item.created_at).toLocaleString()}
+                                {new Date(
+                                  item.created_at
+                                ).toLocaleString()}
                               </p>
                             </div>
                           </div>
@@ -612,7 +818,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </div>
                 )}
 
-                <button className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-white/70 transition hover:bg-white/[0.08] lg:hidden">
+                <button
+                  type="button"
+                  aria-label="Open mobile menu"
+                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-white/70 transition hover:bg-white/[0.08] lg:hidden"
+                >
                   <Menu size={18} />
                 </button>
               </div>
@@ -633,10 +843,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                   ? pathname === "/"
                   : pathname.startsWith(item.href);
 
+              const href =
+                item.label === "Staff" &&
+                staffRole === "support"
+                  ? "/staff/tickets"
+                  : item.href;
+
               return (
                 <Link
                   key={item.label}
-                  href={item.href}
+                  href={href}
                   className={`flex min-w-[82px] flex-col items-center gap-1 rounded-[1.2rem] px-3 py-2 text-[11px] font-bold transition ${
                     isActive
                       ? "bg-white text-[#111018]"
